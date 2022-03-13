@@ -61,6 +61,14 @@ def get_init_settings(address: str, port: int):
 
     return response.json()
 
+def get_chain(address: str, port: int):
+
+    url = f"http://{address}:{str(port)}/chain"
+
+    response = requests.request("GET", url, headers={}, data={})
+
+    return response.json()
+
 def send_new_node_arrived(address: str, port: int, new_node_specs: dict):
 
     url = f"http://{address}:{str(port)}/new_node_arrived"

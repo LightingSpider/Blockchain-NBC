@@ -39,3 +39,10 @@ class InvalidMessageType(Exception):
 
     def __str__(self):
         return f"Invalid message type '{self.message_type}'"
+
+class UnableResolveConflict(Exception):
+    def __init__(self, err: str):
+        self.err = err
+
+    def __str__(self):
+        return self.err

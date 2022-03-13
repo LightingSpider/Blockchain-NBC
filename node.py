@@ -105,11 +105,32 @@ class Node:
 	# -------------- General  ---------------
 
 	def to_dict(self):
+
+		"""
+		Find the chain hash in order to sign it,
+		we will use these values when there is a conflict in the chain,
+		and we need tot avoid malicious chain broadcasting.
+		"""
+
+		# Sign the message by the bootstrap node in order to avoid malicious ring broadcasting
+		# First encode the dict into bytearray
+		encoded_chain = json.dumps(self.chain).encode('utf-8')
+		bytes_chain = bytearray(encoded_chain)
+
+		# Create the hash key based on this bytearray
+		hash_chain = SHA256.new(data=bytes_chain)
+
+		# Now create the signature
+		signature_chain = pkcs1_15.new(self.wallet.private_key).sign(hash_chain)
+
 		return {
 			"public_key": self.wallet.address,
 			"chain": self.chain,
 			"current_block": self.current_block.to_dict(),
-			"UTXOs": self.UTXOs
+			"UTXOs": self.UTXOs,
+			"chain_hash": hash_chain.hexdigest(),
+			"signature_chain": signature_chain.decode('ISO-8859-1'),
+			"last_block_timestamp": self.chain[-1]['timestamp']
 		}
 
 	# -------------- Receiver actions --------------
@@ -556,7 +577,7 @@ class Node:
 		block_bytearray_before_nonce_str = block_bytearray_before_nonce.decode('utf-8')
 		self.mining_proc = Popen(["python", "mining.py", "-b", block_bytearray_before_nonce_str, "-d", str(DIFF), "-n", self.node_id])
 
-	# ---------------- Concencus ---------------
+	# ---------------- Consensus ---------------
 
 	'''
 	This function is called when a node receives a block that it cannot be validated
@@ -565,9 +586,24 @@ class Node:
 	chooses to adopt this with the longer length.
 	'''
 	def resolve_conflicts(self):
-		pass
 
-	def ask_for_chain(self):
+		# Ask the other nodes for their chain
+		chains = self.ask_for_chain()
+
+		# Find the right chain
+		right_chain = self.find_the_right_chain(chains)
+
+		# Update the node
+		self.chain = right_chain
+		self.current_block.previous_hash = self.chain[-1]['hashKey']
+
+	'''
+	Ask every node in the network for their chain until this moment
+	'''
+	def ask_for_chain(self) -> dict:
+
+		print('Start asking for chain.')
+		print('---------------------------------------')
 
 		chains = {}
 
@@ -581,3 +617,64 @@ class Node:
 					address=node['address'],
 					port=node['port']
 				)
+
+		return chains
+
+	'''
+	After getting all the chains from all the nodes in the network,
+	we need to find the chain which is:
+		1. Valid, 
+		2. Longest, 
+		3. with the Oldest Block
+	'''
+	def find_the_right_chain(self, chains: dict) -> [dict]:
+
+		print('Trying to find the correct chain.')
+		print('---------------------------------------')
+
+		# Sort the keys based on the len(chain) and the timestamp of the last valid block
+		sorted_keys = sorted(chains, key=lambda k: (-len(chains[k]['chain']), chains[k]['last_block_timestamp']))
+
+		accepted_chain = None
+		for node_id in sorted_keys:
+
+			# Try to validate the given chain
+			try:
+				# Check the validity of the content by comparing the hash keys
+				encoded_chain = json.dumps(chains[node_id]['chain']).encode('utf-8')
+				bytes_chain = bytearray(encoded_chain)
+				temp_hash_chain = SHA256.new(data=bytes_chain)
+				if temp_hash_chain.hexdigest() != chains[node_id]['chain_hash']:
+					raise custom_errors.InvalidHash(err="Invalid Hash Chain.")
+
+				# Check the validity of the sender by verifying the signature
+				sender_public_key = RSA.importKey(extern_key=self.ring[node_id]['public_key'])
+				pkcs1_15.new(sender_public_key).verify(
+					msg_hash=temp_hash_chain,
+					signature=chains[node_id]['signature_chain'].encode('ISO-8859-1')
+				)
+
+				# Check now the validity of the blocks in the chain
+				self.validate_chain()
+
+				# If we reach at this point it means the chain is valid,
+				# so stop checking the other chains
+				accepted_chain = chains[node_id]['chain']
+				break
+
+			# Catch all the possible exceptions
+			except (
+					custom_errors.InvalidHash,
+					custom_errors.InvalidPreviousHashKey,
+					ValueError
+			) as e:
+				print(f'Error at validating a given chain: {str(e)}')
+				print('Try the next one')
+				pass
+
+		if accepted_chain is not None:
+			return accepted_chain
+		else:
+			raise custom_errors.UnableResolveConflict(
+				err='Could not find a valid chain. Unable to resolve the conflict.'
+			)

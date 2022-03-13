@@ -107,7 +107,12 @@ class Chain(Resource):
             settings_col = db["info"]
             status_doc = list(settings_col.find({"_id": "status_doc"}, {"_id": 0}))[0]
 
-            return status_doc['chain']
+            return {
+                "chain": status_doc["chain"],
+                "chain_hash": status_doc["chain_hash"],
+                "signature_chain": status_doc["signature_chain"],
+                "last_block_timestamp": status_doc["last_block_timestamp"]
+            }
 
         except IndexError:
             abort(400, "This node has not any chain yet.")
@@ -123,7 +128,9 @@ api.add_resource(Block, '/block')
 api.add_resource(Transaction, '/transaction')
 api.add_resource(Ring, '/ring')
 api.add_resource(InitSettings, '/init_settings')
+api.add_resource(Chain, '/chain')
 api.add_resource(NewNodeArrived, '/new_node_arrived')
+
 
 if __name__ == '__main__':
 

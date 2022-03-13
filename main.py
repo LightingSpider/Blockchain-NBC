@@ -216,6 +216,11 @@ try:
                 print(f'Error at node_{my_node.node_id}')
                 print(str(e))
 
+            except custom_errors.UnableResolveConflict as e:
+                print('---------------------------------')
+                print(f'Error at node_{my_node.node_id}')
+                print(str(e))
+
             #except KeyError:
             #    print(f'Invalid message format with type {message_type}')
 
