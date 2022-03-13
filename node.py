@@ -1,6 +1,6 @@
 N = 4
 C = 3
-DIFF = 5
+DIFF = 4
 
 import json
 from Crypto.Hash import SHA256
@@ -337,7 +337,7 @@ class Node:
 		print('---------------------------------------')
 
 	'''
-	It is used only from new nodes which are called to validate the given chain from the bootstrap node
+	Validate the given chain either from the bootstrap node either for the consensus algorithm
 	The validate_block is called for all the blocks except the genesis block
 	'''
 	def validate_chain(self):
@@ -378,7 +378,7 @@ class Node:
 		prev_block_hash = self.chain[-1]['hashKey']
 		if prev_block_hash != block['previousHashKey']:
 			raise custom_errors.InvalidPreviousHashKey(
-				err="The given PreviousHashKey is not the same with my previous block. Maybe it is time to call the Consensus Algorithm."
+				err="The given PreviousHashKey is not the same with my previous block."
 			)
 
 	# ---------------- Broadcasting ---------------
@@ -593,6 +593,12 @@ class Node:
 
 		# Update the node
 		self.chain = right_chain
+
+		# Remove the common transactions between my current block and the blocks of the given chain
+		for block in self.chain:
+			self.current_block.remove_common_transactions(block['transactions'])
+
+		# Update the previous_hash_key of the current block since a new block added to the chain
 		self.current_block.previous_hash = self.chain[-1]['hashKey']
 
 	'''
@@ -608,13 +614,11 @@ class Node:
 		# Ask everybody for their chain except myself
 		for node_id, node in self.ring.items():
 
-			if node_id != self.node_id:
-				print(f"Ask for chain from: node_{node_id} @ {node['address']}:{str(node['port'])}")
-
-				chains[node_id] = network.get_chain(
-					address=node['address'],
-					port=node['port']
-				)
+			print(f"Ask for chain from: node_{node_id} @ {node['address']}:{str(node['port'])}")
+			chains[node_id] = network.get_chain(
+				address=node['address'],
+				port=node['port']
+			)
 
 		return chains
 
@@ -636,6 +640,8 @@ class Node:
 		accepted_chain = None
 		for node_id in sorted_keys:
 
+			print(f'Checking the chain from node_{node_id}')
+
 			# Try to validate the given chain
 			try:
 				# Check the validity of the content by comparing the hash keys
@@ -653,7 +659,8 @@ class Node:
 				)
 
 				# Check now the validity of the blocks in the chain
-				self.validate_chain()
+				# self.chain = chains[node_id]['chain']
+				# self.validate_chain()
 
 				# If we reach at this point it means the chain is valid,
 				# so stop checking the other chains
@@ -666,11 +673,12 @@ class Node:
 					custom_errors.InvalidPreviousHashKey,
 					ValueError
 			) as e:
-				print(f'Error at validating a given chain: {str(e)}')
+				print(f'Error at validating a given chain --> {str(e)}')
 				print('Try the next one')
 				pass
 
 		if accepted_chain is not None:
+			print(f'Accepted the chain from the node_{node_id}')
 			return accepted_chain
 		else:
 			raise custom_errors.UnableResolveConflict(

@@ -107,118 +107,159 @@ def update_status(node: Node):
     print("STATUS UPDATED")
     print('---------------------------------------')
 
+def process_the_message(message_type: str, message_data: dict):
+
+    try:
+        if message_type == 'block':
+
+            print('New block arrived.')
+
+            # Need to stop every mining process running
+            if my_node.mining_proc is not None:
+                if my_node.mining_proc.poll() is None:
+                    print('Stop mining.')
+                    Popen.terminate(my_node.mining_proc)
+            print('---------------------------------------')
+
+            my_node.receive_block(message_data)
+
+        elif message_type == 'transaction':
+
+            # ---
+            my_node.validate_transaction(message_data)
+
+        elif message_type == 'ring':
+
+            my_node.get_the_final_ring(
+                ring=message_data['ring_dict'],
+                signature=message_data['signature'],
+                hash_ring=message_data['hash_ring']
+            )
+
+        elif message_type == 'NewNodeArrived':
+
+            my_node.register_node_to_network(
+                address=message_data['address'],
+                port=message_data['port'],
+                public_key=message_data['public_key']
+            )
+
+            # Save the current chain, which maybe contains only the genesis block
+            # Save the ring and UTXOs, which contains all the nodes' info at the current time
+            update_init_settings(bootstrap_node=my_node)
+
+        elif message_type == 'NewTransaction':
+
+            my_node.create_transaction(
+                receiver_node_id=message_data['recipient_node_id'],
+                amount=message_data['amount']
+            )
+
+        elif message_type == 'FoundNonce':
+
+            my_node.current_block.is_mined(
+                nonce=message_data['nonce'].encode('ISO-8859-1'),
+                hash_key=message_data['hashKey']
+            )
+            my_node.broadcast_block()
+
+        else:
+            raise custom_errors.InvalidMessageType(message_type=message_type)
+
+    except custom_errors.InvalidMessageType as e:
+        print('---------------------------------')
+        print(f'Error at node_{my_node.node_id}')
+        print(str(e))
+
+    except custom_errors.InvalidHash as e:
+        print('---------------------------------')
+        print(f'Error at node_{my_node.node_id}')
+        print(str(e))
+
+    except custom_errors.UnauthorizedNode as e:
+        print('---------------------------------')
+        print(f'Error at node_{my_node.node_id}')
+        print(str(e))
+
+    except custom_errors.InsufficientAmount as e:
+        print('---------------------------------')
+        print(f'Error at node_{my_node.node_id}')
+        print(str(e))
+
+    except custom_errors.InvalidPreviousHashKey as e:
+        print('---------------------------------')
+        print(f'Error at node_{my_node.node_id}')
+        print(str(e))
+        print('Maybe it is time to call the Consensus Algorithm.')
+        my_node.resolve_conflicts()
+
+    except custom_errors.InvalidUTXOs as e:
+        print('---------------------------------')
+        print(f'Error at node_{my_node.node_id}')
+        print(str(e))
+
+    except custom_errors.UnableResolveConflict as e:
+        print('---------------------------------')
+        print(f'Error at node_{my_node.node_id}')
+        print(str(e))
+
+    '''
+    except KeyError:
+        print(f'Invalid message format with type {message_type}')
+    '''
+
+    # Update status on every new action
+    update_status(my_node)
+
 # -------------------- Streaming messages --------------------
 pipeline = [{'$match': {'operationType': 'insert'}}]
 try:
     resume_token = None
+    queued_messages = []
 
     with configuration.message_queue.watch(pipeline) as stream:
         for insert_change in stream:
-            
+
             # Get the message type and keep only the usefull data
-            message_type = insert_change['fullDocument']['type']
-            new_message = {k: v for k, v in insert_change['fullDocument'].items() if k not in ['_id', 'type']} 
+            new_message_type = insert_change['fullDocument']['type']
+            new_message_data = {k: v for k, v in insert_change['fullDocument'].items() if k not in ['_id', 'type']}
+            new_message = (new_message_type, new_message_data)
+
+            # Always process the message when a new block arrives or when a nonce is found
+            # even when we are mining, in order to stop our mining.
+            if new_message_type in ['block', 'FoundNonce']:
+                process_the_message(new_message_type, new_message_data)
+                continue
+
+            # All the other messages go through a queue in order to be processed after the mining
             try:
-                if message_type == 'block':
 
-                    print('New block arrived.')
+                # There is a mining process
+                if my_node.mining_proc.poll() is None:
+                    queued_messages.append(new_message)
 
-                    # Need to stop every mining process running
-                    if my_node.mining_proc is not None:
-                        if my_node.mining_proc.poll() is None:
-                            print('Stop mining.')
-                            Popen.terminate(my_node.mining_proc)
-                            my_node.mining_proc = None
-                    print('---------------------------------------')
-
-                    my_node.receive_block(new_message)
-
-                elif message_type == 'transaction':
-
-                    # ---
-                    my_node.validate_transaction(new_message)
-
-                elif message_type == 'ring':
-
-                    my_node.get_the_final_ring(
-                        ring=new_message['ring_dict'],
-                        signature=new_message['signature'],
-                        hash_ring=new_message['hash_ring']
-                    )
-
-                elif message_type == 'NewNodeArrived':
-
-                    my_node.register_node_to_network(
-                        address=new_message['address'],
-                        port=new_message['port'],
-                        public_key=new_message['public_key']
-                    )
-
-                    # Save the current chain, which maybe contains only the genesis block
-                    # Save the ring and UTXOs, which contains all the nodes' info at the current time
-                    update_init_settings(bootstrap_node=my_node)
-
-                elif message_type == 'NewTransaction':
-
-                    my_node.create_transaction(
-                        receiver_node_id=new_message['recipient_node_id'],
-                        amount=new_message['amount']
-                    )
-
-                elif message_type == 'FoundNonce':
-
-                    my_node.current_block.is_mined(
-                        nonce=new_message['nonce'].encode('ISO-8859-1'),
-                        hash_key=new_message['hashKey']
-                    )
-                    my_node.broadcast_block()
-
+                # There is NOT a mining process
                 else:
-                    raise custom_errors.InvalidMessageType(message_type=message_type)
 
-                # Update status on every new action
-                update_status(my_node)
+                    # Add the current new message
+                    queued_messages.append(new_message)
+                    for q_message in queued_messages:
+                        process_the_message(
+                            message_type=q_message[0],
+                            message_data=q_message[1]
+                        )
 
-                resume_token = stream.resume_token
+                    queued_messages = []
 
-            except custom_errors.InvalidMessageType as e:
-                print('---------------------------------')
-                print(f'Error at node_{my_node.node_id}')
-                print(str(e))
+            # mining_proc is None, because we have not mined any block yet,
+            # so we just process the message
+            except AttributeError as e:
+                process_the_message(
+                    message_type=new_message_type,
+                    message_data=new_message_data
+                )
 
-            except custom_errors.InvalidHash as e:
-                print('---------------------------------')
-                print(f'Error at node_{my_node.node_id}')
-                print(str(e))
-
-            except custom_errors.UnauthorizedNode as e:
-                print('---------------------------------')
-                print(f'Error at node_{my_node.node_id}')
-                print(str(e))
-
-            except custom_errors.InsufficientAmount as e:
-                print('---------------------------------')
-                print(f'Error at node_{my_node.node_id}')
-                print(str(e))
-
-            except custom_errors.InvalidPreviousHashKey as e:
-                print('---------------------------------')
-                print(f'Error at node_{my_node.node_id}')
-                print(str(e))
-                my_node.resolve_conflicts()
-
-            except custom_errors.InvalidUTXOs as e:
-                print('---------------------------------')
-                print(f'Error at node_{my_node.node_id}')
-                print(str(e))
-
-            except custom_errors.UnableResolveConflict as e:
-                print('---------------------------------')
-                print(f'Error at node_{my_node.node_id}')
-                print(str(e))
-
-            #except KeyError:
-            #    print(f'Invalid message format with type {message_type}')
+            resume_token = stream.resume_token
 
 except pymongo_errors.PyMongoError as e:
 
