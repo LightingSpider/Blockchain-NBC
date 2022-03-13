@@ -1,18 +1,6 @@
-from collections import OrderedDict
-
-import binascii
-import uuid
-
-import struct
-import Crypto
-import Crypto.Random
 from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA
-from Crypto.Signature import PKCS1_v1_5
 from Crypto.Signature import pkcs1_15
-
-import requests
-from flask import Flask, jsonify, request, render_template
 
 '''
 A transaction can be created only from the sender who is also the owner of the wallet, in order to sing it.
@@ -125,27 +113,3 @@ class TransactionOutput:
             'receiverAddress': self.receiver_address,
             'amount': self.amount
         }
-
-'''
-from wallet import Wallet
-
-send = Wallet()
-rec = Wallet()
-
-trans = Transaction(sender_address=send.address, receiver_address=rec.address, amount='100', transaction_inputs=[])
-trans.sign_transaction(send.private_key)
-signature_str = trans.signature.decode('ISO-8859-1')
-signature_bytes = signature_str.encode('ISO-8859-1')
-trans_dict = trans.to_dict()
-
-transaction_object = Transaction(
-    sender_address=trans_dict['sender'],
-    receiver_address=trans_dict['receiver'],
-    amount=trans_dict['amount'],
-    transaction_inputs=trans_dict['inputTransactions'],
-    signature=signature_bytes
-)
-
-pkcs1_15.new(send.public_key).verify(transaction_object.transaction_id, signature_bytes)
-# print(signature_str)
-'''

@@ -1,11 +1,8 @@
-import threading
-
-import pymongo
 from pymongo import errors as pymongo_errors
-import urllib3
 import custom_errors
 from argparse import ArgumentParser
 import requests
+from subprocess import Popen
 from wallet import Wallet
 from node import Node
 import network
@@ -69,7 +66,6 @@ import configuration
 configuration.init(node=my_node)
 
 # ----------- Set Up Api Server -----------
-from subprocess import call, Popen
 server_proc = Popen(["python", "server.py", "-a", address, "-p", str(port), "-n", node_id])
 time.sleep(2)   # Wait till the server is up
 # call(f"python server.py -a {address} -p {str(port)} -n {node_id} &", shell=True)
@@ -245,43 +241,3 @@ except pymongo_errors.PyMongoError as e:
 
 # Terminate the sever process
 Popen.terminate(server_proc)
-
-'''
-import firebase_admin
-from firebase_admin import credentials
-from firebase_admin import db
-
-
-def listener(event):
-    print(event.event_type)  # can be 'put' or 'patch'
-    print(event.path)  # relative to the reference, it seems
-    print(event.data)  # new data at /reference/event.path. None if deleted
-
-
-json_path = r'./noobcash-2b697-firebase-adminsdk-ayxpq-24475378c2.json'
-my_app_name = 'noobcash-2b697'
-xyz = {'databaseURL': 'https://{}.firebaseio.com'.format(my_app_name),
-       'storageBucket': '{}.appspot.com'.format(my_app_name)}
-
-cred = credentials.Certificate(json_path)
-obj = firebase_admin.initialize_app(cred, xyz, name=my_app_name)
-
-db.reference('node_0', app=obj).listen(listener)
-
-# Create an Event for notifying main thread.
-# callback_done = threading.Event()
-
-def on_snapshot(col_snapshot, changes, read_time):
-    print(u'Callback received query snapshot.')
-    for change in changes:
-        print(change)
-        if change.type.name == 'ADDED':
-            print(u'New doc: {}'.format(change.document.id))
-
-# Watch the collection query
-import time
-with configuration.col.on_snapshot(on_snapshot) as stream:
-    for insert_change in stream:
-        print(insert_change)
-
-'''

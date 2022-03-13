@@ -1,20 +1,18 @@
 N = 4
 C = 3
 DIFF = 5
-MAJORITY = 0.51
 
 import json
 from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA
 from Crypto.Signature import pkcs1_15
-from Crypto.Random import get_random_bytes
-from subprocess import call, Popen
+from subprocess import Popen
 
 import custom_errors
 from block import Block
 from wallet import Wallet
 import network
-from transaction import Transaction, TransactionOutput
+from transaction import Transaction
 
 class Node:
 

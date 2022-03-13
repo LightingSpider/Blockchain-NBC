@@ -1,7 +1,5 @@
-import requests
-from firebase_admin import credentials, firestore, initialize_app
 from flask_restx import Api
-from flask import Flask, jsonify, request, render_template
+from flask import Flask, request
 from flask_restx import Resource, abort
 from flask_cors import CORS
 from argparse import ArgumentParser
