@@ -27,7 +27,7 @@ while True:
     # Find a random nonce (in bytes)
     nonce = get_random_bytes(64)
 
-    print("Try nonce")
+    # print("Try nonce")
 
     # Add the nonce to the bytearray
     temp_bytearray = bytearray()
@@ -37,8 +37,8 @@ while True:
     # Hash the block with SHA256
     block_hash = SHA256.new(data=temp_bytearray)
 
-    print("Hash Block:", block_hash.hexdigest())
-    print("---------------------------------------")
+    # print("Hash Block:", block_hash.hexdigest())
+    # print("---------------------------------------")
 
     if block_hash.hexdigest()[0:DIFF] == DIFF * "0":
         print("FOUND nonce:", nonce)

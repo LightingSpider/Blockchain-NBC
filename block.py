@@ -85,6 +85,8 @@ class Block:
         curr_transactions_ids = set(self.get_transactions(only_ids=True))
         other_transactions_ids = {trans['id'] for trans in transactions}
 
+        print(f"{len(curr_transactions_ids.intersection(other_transactions_ids))} common transactions.")
+
         # Remove from the current block the transactions that are validated from another block
         unique_transactions_ids = curr_transactions_ids - other_transactions_ids
         self.list_of_transactions = [trans for trans in self.list_of_transactions

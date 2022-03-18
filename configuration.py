@@ -20,15 +20,6 @@ def init(node: Node):
 
     # Initialize the database by adding one document into a collection
     try:
-        db["info"].insert_one({
-            "_id": "settings_doc",
-            "address": node.network_address,
-            "port": node.port,
-            "node_id": node.node_id,
-            "chain": node.chain,
-            "UTXOs": node.UTXOs,
-            "ring": node.ring
-        })
 
         db["info"].insert_one({**{
             "_id": "status_doc"

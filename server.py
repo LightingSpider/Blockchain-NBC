@@ -58,7 +58,7 @@ class InitSettings(Resource):
 
         try:
             settings_col = db["info"]
-            settings_doc = list(settings_col.find({"_id": "settings_doc"}, {"_id": 0}))[0]
+            settings_doc = list(settings_col.find({"_id": "status_doc"}, {"_id": 0}))[0]
 
             return {
                 **{"new_node_id": str(len(settings_doc['ring']))},

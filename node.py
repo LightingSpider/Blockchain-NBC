@@ -1,6 +1,8 @@
+import subprocess
+
 N = 4
 C = 3
-DIFF = 4
+DIFF = 5
 
 import json
 from Crypto.Hash import SHA256
@@ -110,7 +112,6 @@ class Node:
 		and we need tot avoid malicious chain broadcasting.
 		"""
 
-		# Sign the message by the bootstrap node in order to avoid malicious ring broadcasting
 		# First encode the dict into bytearray
 		encoded_chain = json.dumps(self.chain).encode('utf-8')
 		bytes_chain = bytearray(encoded_chain)
@@ -122,6 +123,10 @@ class Node:
 		signature_chain = pkcs1_15.new(self.wallet.private_key).sign(hash_chain)
 
 		return {
+			"address": self.network_address,
+			"port": self.port,
+			"node_id": self.node_id,
+			"ring": self.ring,
 			"public_key": self.wallet.address,
 			"chain": self.chain,
 			"current_block": self.current_block.to_dict(),
@@ -187,11 +192,13 @@ class Node:
 		for utxo_key, utxo_value in self.UTXOs[send_pub_key].items():
 
 			# Add the UTXO to input transactions
+			print(f"Collect {utxo_value['amount']}")
 			coins_cnt += float(utxo_value['amount'])
 			input_transactions.append(utxo_key)
 
 			# Check if we have sufficient amount of coins
 			if coins_cnt >= float(amount):
+				print(f"Needed {amount} and collected {str(coins_cnt)}")
 				break
 
 		print('Check the balance')
@@ -204,8 +211,8 @@ class Node:
 
 		# At this point means that we have sufficient amount of money for the transaction
 		# So remove the used UTXOs from the saved UTXOs
-		for utxo_key in input_transactions:
-			del self.UTXOs[send_pub_key][utxo_key]
+		# for utxo_key in input_transactions:
+			# del self.UTXOs[send_pub_key][utxo_key]
 
 		print('Create the transaction object')
 		print('---------------------------------------')
@@ -224,6 +231,7 @@ class Node:
 		# Sign the transaction with the sender's private key
 		transaction.sign_transaction(self.wallet.private_key)
 
+		'''
 		print('Fix the UTXOs')
 		print('---------------------------------------')
 
@@ -235,6 +243,7 @@ class Node:
 			if receiver_address not in self.UTXOs.keys():
 				self.UTXOs[receiver_address] = {}
 			self.UTXOs[receiver_address][trans_output.id] = trans_output.to_dict()
+		'''
 
 		print('Transaction object created')
 		print('---------------------------------------')
@@ -264,7 +273,7 @@ class Node:
 	'''
 	def validate_transaction(self, transaction: dict):
 
-		print('Validating new transaction')
+		print(f"Validating new transaction with amount {transaction['amount']}")
 
 		# Extract all the necessary information form the transaction
 		sender_address = transaction['sender']
@@ -309,8 +318,16 @@ class Node:
 				del sender_UTXOs[trans_id]
 
 			except KeyError:
+
+				# Find the sender node_id
+				node_id = None
+				for k, v in self.ring.items():
+					if v['public_key'] == sender_address:
+						node_id = k
+						break
+
 				raise custom_errors.InvalidUTXOs(
-					err=f"Invalid UTXO from node with public address: '{sender_address}'"
+					err=f"Invalid UTXO from node {node_id} with ID: '{trans_id}'"
 				)
 
 		print("Check Balance")
@@ -331,10 +348,10 @@ class Node:
 				self.UTXOs[receiver_address] = {}
 			self.UTXOs[receiver_address][trans_output.id] = trans_output.to_dict()
 
-		self.add_transaction_to_block(transaction_object)
-
 		print("Transaction validated")
 		print('---------------------------------------')
+
+		self.add_transaction_to_block(transaction_object)
 
 	'''
 	Validate the given chain either from the bootstrap node either for the consensus algorithm
@@ -391,18 +408,18 @@ class Node:
 		# Send the mined transaction to all the other nodes
 		for node_id, node in self.ring.items():
 
-			if node_id != self.node_id:
+			# if node_id != self.node_id:
 
-				print(f"Send it: node_{node_id} @ {node['address']}:{str(node['port'])}")
-				network.send_transaction(
-					address=node['address'],
-					port=node['port'],
-					transaction=transaction.to_dict()
-				)
+			print(f"Send it: node_{node_id} @ {node['address']}:{str(node['port'])}")
+			network.send_transaction(
+				address=node['address'],
+				port=node['port'],
+				transaction=transaction.to_dict()
+			)
 		print('---------------------------------------')
 
 		# I trust myself, so I will not send this transaction to myself in order to avoid validation
-		self.add_transaction_to_block(transaction)
+		# self.add_transaction_to_block(transaction)
 
 	'''
 	Once the node finds the nonce first, sends the block to everyone.
@@ -571,7 +588,7 @@ class Node:
 		# Get the bytes of the current block
 		block_bytearray_before_nonce = self.current_block.bytearray_before_nonce()
 
-		# Start parallel mining at the background
+		# Start mining, the whole program blocks until mining is done
 		block_bytearray_before_nonce_str = block_bytearray_before_nonce.decode('utf-8')
 		self.mining_proc = Popen(["python", "mining.py", "-b", block_bytearray_before_nonce_str, "-d", str(DIFF), "-n", self.node_id])
 

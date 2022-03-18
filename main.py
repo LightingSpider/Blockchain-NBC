@@ -107,7 +107,8 @@ def update_status(node: Node):
     print("STATUS UPDATED")
     print('---------------------------------------')
 
-def process_the_message(message_type: str, message_data: dict):
+queued_transactions = []
+def process_the_message(message_type: str, message_data: dict, message_id: str):
 
     try:
         if message_type == 'block':
@@ -121,12 +122,36 @@ def process_the_message(message_type: str, message_data: dict):
                     Popen.terminate(my_node.mining_proc)
             print('---------------------------------------')
 
+            # Receive the new block
             my_node.receive_block(message_data)
+
+            # Process the queued transactions
+            for _ in range(len(queued_transactions)):
+
+                print('Get some transactions from my Queue (BlockArrived)')
+                print('---------------------------------------')
+
+                # If the node started mining then stop
+                time.sleep(1)
+                if my_node.mining_proc.poll() is None:
+                    print('Mining started again, so stop getting transactions from the queue')
+                    break
+
+                # Add the transaction
+                q_trans = queued_transactions.pop(0)
+                my_node.validate_transaction(q_trans)
 
         elif message_type == 'transaction':
 
-            # ---
-            my_node.validate_transaction(message_data)
+            # Check if we are in a mining process
+            if my_node.mining_proc is not None:
+                if my_node.mining_proc.poll() is None:
+                    print('Node is mining so we will queue this transaction.')
+                    queued_transactions.append(message_data)
+                else:
+                    my_node.validate_transaction(message_data)
+            else:
+                my_node.validate_transaction(message_data)
 
         elif message_type == 'ring':
 
@@ -146,7 +171,7 @@ def process_the_message(message_type: str, message_data: dict):
 
             # Save the current chain, which maybe contains only the genesis block
             # Save the ring and UTXOs, which contains all the nodes' info at the current time
-            update_init_settings(bootstrap_node=my_node)
+            # update_init_settings(bootstrap_node=my_node)
 
         elif message_type == 'NewTransaction':
 
@@ -162,6 +187,21 @@ def process_the_message(message_type: str, message_data: dict):
                 hash_key=message_data['hashKey']
             )
             my_node.broadcast_block()
+
+            # Process the queued transactions
+            for _ in range(len(queued_transactions)):
+
+                print('Get some transactions from my Queue (FoundNonce)')
+                print('---------------------------------------')
+
+                # If the node started mining then stop
+                if my_node.mining_proc.poll() is None:
+                    print('Mining started again, so stop getting transactions from the queue')
+                    break
+
+                # Add the transaction
+                q_trans = queued_transactions.pop(0)
+                my_node.validate_transaction(q_trans)
 
         else:
             raise custom_errors.InvalidMessageType(message_type=message_type)
@@ -211,6 +251,9 @@ def process_the_message(message_type: str, message_data: dict):
     # Update status on every new action
     update_status(my_node)
 
+    # Remove the message from the message collection in MongoDB
+    configuration.message_queue.delete_one({'_id': message_id})
+
 # -------------------- Streaming messages --------------------
 pipeline = [{'$match': {'operationType': 'insert'}}]
 try:
@@ -223,41 +266,16 @@ try:
             # Get the message type and keep only the usefull data
             new_message_type = insert_change['fullDocument']['type']
             new_message_data = {k: v for k, v in insert_change['fullDocument'].items() if k not in ['_id', 'type']}
-            new_message = (new_message_type, new_message_data)
+            new_message_id = insert_change['fullDocument']['_id']
+            new_message = (new_message_type, new_message_data, new_message_id)
 
-            # Always process the message when a new block arrives or when a nonce is found
-            # even when we are mining, in order to stop our mining.
-            if new_message_type in ['block', 'FoundNonce']:
-                process_the_message(new_message_type, new_message_data)
-                continue
+            process_the_message(
+                message_type=new_message_type,
+                message_data=new_message_data,
+                message_id=new_message_id
+            )
 
-            # All the other messages go through a queue in order to be processed after the mining
-            try:
-
-                # There is a mining process
-                if my_node.mining_proc.poll() is None:
-                    queued_messages.append(new_message)
-
-                # There is NOT a mining process
-                else:
-
-                    # Add the current new message
-                    queued_messages.append(new_message)
-                    for q_message in queued_messages:
-                        process_the_message(
-                            message_type=q_message[0],
-                            message_data=q_message[1]
-                        )
-
-                    queued_messages = []
-
-            # mining_proc is None, because we have not mined any block yet,
-            # so we just process the message
-            except AttributeError as e:
-                process_the_message(
-                    message_type=new_message_type,
-                    message_data=new_message_data
-                )
+            time.sleep(1)
 
             resume_token = stream.resume_token
 
