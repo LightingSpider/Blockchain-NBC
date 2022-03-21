@@ -107,7 +107,34 @@ def update_status(node: Node):
     print("STATUS UPDATED")
     print('---------------------------------------')
 
-queued_transactions = []
+queued_messages = []
+
+def dequeue_messages(tagline: str = ''):
+
+    for _ in range(len(queued_messages)):
+
+        print(tagline)
+        print('---------------------------------------')
+
+        q_messages_types = [x[0] for x in queued_messages]
+        print(q_messages_types)
+        print('---------------------------------------')
+
+        # If the node started mining then stop
+        time.sleep(1)
+        if my_node.mining_proc.poll() is None:
+            print('Mining started again, so stop getting messages from the queue')
+            print('---------------------------------------')
+            return
+
+        # Add the transaction
+        q_message = queued_messages.pop(0)
+        process_the_message(
+            message_type=q_message[0],
+            message_data=q_message[1],
+            message_id=q_message[2]
+        )
+
 def process_the_message(message_type: str, message_data: dict, message_id: str):
 
     try:
@@ -125,33 +152,13 @@ def process_the_message(message_type: str, message_data: dict, message_id: str):
             # Receive the new block
             my_node.receive_block(message_data)
 
-            # Process the queued transactions
-            for _ in range(len(queued_transactions)):
-
-                print('Get some transactions from my Queue (BlockArrived)')
-                print('---------------------------------------')
-
-                # If the node started mining then stop
-                time.sleep(1)
-                if my_node.mining_proc.poll() is None:
-                    print('Mining started again, so stop getting transactions from the queue')
-                    break
-
-                # Add the transaction
-                q_trans = queued_transactions.pop(0)
-                my_node.validate_transaction(q_trans)
+            # Dequeue now all the messages
+            dequeue_messages('Get some messages from my Queue. (BlockArrived)')
 
         elif message_type == 'transaction':
 
-            # Check if we are in a mining process
-            if my_node.mining_proc is not None:
-                if my_node.mining_proc.poll() is None:
-                    print('Node is mining so we will queue this transaction.')
-                    queued_transactions.append(message_data)
-                else:
-                    my_node.validate_transaction(message_data)
-            else:
-                my_node.validate_transaction(message_data)
+            # ----
+            my_node.validate_transaction(message_data)
 
         elif message_type == 'ring':
 
@@ -182,26 +189,20 @@ def process_the_message(message_type: str, message_data: dict, message_id: str):
 
         elif message_type == 'FoundNonce':
 
+            # Get the mined block and broadcast it
+
+            my_node.broadcast_block(block_dict=message_data['block_dict'])
+
+            '''
             my_node.current_block.is_mined(
                 nonce=message_data['nonce'].encode('ISO-8859-1'),
                 hash_key=message_data['hashKey']
             )
             my_node.broadcast_block()
+            '''
 
-            # Process the queued transactions
-            for _ in range(len(queued_transactions)):
-
-                print('Get some transactions from my Queue (FoundNonce)')
-                print('---------------------------------------')
-
-                # If the node started mining then stop
-                if my_node.mining_proc.poll() is None:
-                    print('Mining started again, so stop getting transactions from the queue')
-                    break
-
-                # Add the transaction
-                q_trans = queued_transactions.pop(0)
-                my_node.validate_transaction(q_trans)
+            # Dequeue now all the messages
+            dequeue_messages('Get some messages from my Queue. (FoundNonce)')
 
         else:
             raise custom_errors.InvalidMessageType(message_type=message_type)
@@ -233,6 +234,9 @@ def process_the_message(message_type: str, message_data: dict, message_id: str):
         print('Maybe it is time to call the Consensus Algorithm.')
         my_node.resolve_conflicts()
 
+        # Dequeue now all the messages
+        dequeue_messages('Get some messages from my Queue. (Conflict)')
+
     except custom_errors.InvalidUTXOs as e:
         print('---------------------------------')
         print(f'Error at node_{my_node.node_id}')
@@ -242,6 +246,16 @@ def process_the_message(message_type: str, message_data: dict, message_id: str):
         print('---------------------------------')
         print(f'Error at node_{my_node.node_id}')
         print(str(e))
+
+    except custom_errors.NoValidationNeeded as e:
+        print('---------------------------------')
+        print(str(e))
+
+    except custom_errors.InvalidBlockCommonTransactions as e:
+        print('---------------------------------')
+        print(f'Error at node_{my_node.node_id}')
+        print(str(e))
+
 
     '''
     except KeyError:
@@ -255,10 +269,10 @@ def process_the_message(message_type: str, message_data: dict, message_id: str):
     configuration.message_queue.delete_one({'_id': message_id})
 
 # -------------------- Streaming messages --------------------
+
 pipeline = [{'$match': {'operationType': 'insert'}}]
 try:
     resume_token = None
-    queued_messages = []
 
     with configuration.message_queue.watch(pipeline) as stream:
         for insert_change in stream:
@@ -269,13 +283,39 @@ try:
             new_message_id = insert_change['fullDocument']['_id']
             new_message = (new_message_type, new_message_data, new_message_id)
 
-            process_the_message(
-                message_type=new_message_type,
-                message_data=new_message_data,
-                message_id=new_message_id
-            )
+            try:
 
-            time.sleep(1)
+                # Always process immediately these messages
+                if new_message_type in ['block', 'FoundNonce', 'ring', 'NewNodeArrived']:
+                    process_the_message(
+                        message_type=new_message_type,
+                        message_data=new_message_data,
+                        message_id=new_message_id
+                    )
+
+                # As for the other messages we have a queue
+                # First, check if we are mining
+                else:
+                    time.sleep(1)
+
+                    # We are mining
+                    if my_node.mining_proc.poll() is None:
+                        print(f'Node is mining so we will queue this message. {new_message_type}')
+                        queued_messages.append(new_message)
+
+                    # We are NOT mining
+                    else:
+                        queued_messages.append(new_message)
+                        dequeue_messages('Dequeue from streaming function')
+
+            # We haven't mined any block yet
+            except AttributeError as e:
+
+                process_the_message(
+                    message_type=new_message_type,
+                    message_data=new_message_data,
+                    message_id=new_message_id
+                )
 
             resume_token = stream.resume_token
 

@@ -106,6 +106,7 @@ class Chain(Resource):
             status_doc = list(settings_col.find({"_id": "status_doc"}, {"_id": 0}))[0]
 
             return {
+                "UTXOs": status_doc["UTXOs"],
                 "chain": status_doc["chain"],
                 "chain_hash": status_doc["chain_hash"],
                 "signature_chain": status_doc["signature_chain"],

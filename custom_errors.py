@@ -46,3 +46,17 @@ class UnableResolveConflict(Exception):
 
     def __str__(self):
         return self.err
+
+class NoValidationNeeded(Exception):
+    def __init__(self, err: str):
+        self.err = err
+
+    def __str__(self):
+        return self.err
+
+class InvalidBlockCommonTransactions(Exception):
+    def __init__(self, err: str):
+        self.err = err
+
+    def __str__(self):
+        return self.err

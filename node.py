@@ -1,7 +1,7 @@
 import subprocess
 
-N = 4
-C = 3
+N = 5
+C = 5
 DIFF = 5
 
 import json
@@ -149,6 +149,7 @@ class Node:
 		if block_current_capacity == C:
 			print('Block is full.')
 			self.mine_block()
+			self.create_new_block()
 
 	'''
 	We call this function when another node broadcasts its block and we have to
@@ -176,14 +177,12 @@ class Node:
 
 		print("Create a transaction")
 		print(f"node_{self.node_id} --> node_{receiver_node_id} : {amount} NBCs")
-		print('---------------------------------------')
 
 		# Get the public keys
 		rec_pub_key = self.ring[receiver_node_id]['public_key']
 		send_pub_key = self.wallet.address
 
 		print('Collect the needed UTXOs')
-		print('---------------------------------------')
 
 		# Find the UTXOs which can provide a total amount >= needed amount
 		# When we use a UTXO we have to remove it from the saved UTXOs
@@ -202,7 +201,6 @@ class Node:
 				break
 
 		print('Check the balance')
-		print('---------------------------------------')
 
 		if coins_cnt < float(amount):
 			raise custom_errors.InsufficientAmount(
@@ -211,11 +209,10 @@ class Node:
 
 		# At this point means that we have sufficient amount of money for the transaction
 		# So remove the used UTXOs from the saved UTXOs
-		# for utxo_key in input_transactions:
-			# del self.UTXOs[send_pub_key][utxo_key]
+		for utxo_key in input_transactions:
+			del self.UTXOs[send_pub_key][utxo_key]
 
 		print('Create the transaction object')
-		print('---------------------------------------')
 
 		# Create the transaction
 		transaction = Transaction(
@@ -226,14 +223,11 @@ class Node:
 		)
 
 		print('Sign the transaction with my private key')
-		print('---------------------------------------')
 
 		# Sign the transaction with the sender's private key
 		transaction.sign_transaction(self.wallet.private_key)
 
-		'''
-		print('Fix the UTXOs')
-		print('---------------------------------------')
+		print('Fix my UTXOs while creating a transaction')
 
 		# Once we have checked the balance it means that this transaction is valid,
 		# se we need to update the UTXOs by producing the correct transactionOutputs
@@ -243,7 +237,6 @@ class Node:
 			if receiver_address not in self.UTXOs.keys():
 				self.UTXOs[receiver_address] = {}
 			self.UTXOs[receiver_address][trans_output.id] = trans_output.to_dict()
-		'''
 
 		print('Transaction object created')
 		print('---------------------------------------')
@@ -273,13 +266,28 @@ class Node:
 	'''
 	def validate_transaction(self, transaction: dict):
 
-		print(f"Validating new transaction with amount {transaction['amount']}")
-
 		# Extract all the necessary information form the transaction
 		sender_address = transaction['sender']
 		transaction_id = transaction['id']
 		signature = transaction['signature'].encode('ISO-8859-1')
 		amount = transaction['amount']
+
+		# Find the sender node_id
+		sender_node_id = None
+		for k, v in self.ring.items():
+			if v['public_key'] == sender_address:
+				sender_node_id = k
+				break
+
+		print(f"Validating new transaction from {sender_node_id} with amount {amount}")
+
+		# Check if the current block has reached its capacity
+		block_current_capacity = len(self.current_block.list_of_transactions)
+		if block_current_capacity == C:
+			print('Something went wrong and the current block has reached its capacity.')
+			print('So we will reject for now this transaction and we will try to mine again the current block')
+			# self.mine_block()
+			return
 
 		# Create the transaction object from the given dictionary
 		transaction_object = Transaction(
@@ -302,56 +310,60 @@ class Node:
 				err=f"Could not validate the HashKey of the transaction {transaction_id}"
 			)
 
-		print('Check UTXOs')
+		# We validate only transactions that came from other nodes, we trust ourselves,
+		# That's why we add the transaction to the block without checking the UTXOs,
+		# but we had to verify the signature in order to be sure that this transaction came from us
+		if sender_node_id != self.node_id:
 
-		# Check the inputTransactions
-		# 1. If they are UTXOs
-		sender_UTXOs = self.UTXOs[sender_address]
-		input_balance = 0.0
-		for trans_id in transaction['inputTransactions']:
+			# Check the inputTransactions
+			print('Check Input Transactions')
 
-			# If the transaction id refers to a UTXO:
-			# 1. add the amount to the balance
-			# 2. remove it from the sender's UTXOs in order to avoid double spending
-			try:
-				input_balance += float(sender_UTXOs[trans_id]['amount'])
-				del sender_UTXOs[trans_id]
+			# 1. If they are UTXOs
+			sender_UTXOs = self.UTXOs[sender_address]
+			input_balance = 0.0
+			for trans_id in transaction['inputTransactions']:
 
-			except KeyError:
+				# If the transaction id refers to a UTXO:
+				# 1. add the amount to the balance
+				# 2. remove it from the sender's UTXOs in order to avoid double spending
+				try:
+					input_balance += float(sender_UTXOs[trans_id]['amount'])
+					# del sender_UTXOs[trans_id]
 
-				# Find the sender node_id
-				node_id = None
-				for k, v in self.ring.items():
-					if v['public_key'] == sender_address:
-						node_id = k
-						break
+				except KeyError:
 
-				raise custom_errors.InvalidUTXOs(
-					err=f"Invalid UTXO from node {node_id} with ID: '{trans_id}'"
+					raise custom_errors.InvalidUTXOs(
+						err=f"Invalid UTXO from node {sender_node_id} with ID: '{trans_id}'"
+					)
+
+			print("Check Balance")
+
+			# 2. If they have sufficient amount of coins
+			surplus = input_balance - float(amount)
+			if surplus < 0.0:
+				raise custom_errors.InsufficientAmount(
+					err=f"Insufficient amount from node '{sender_address}' at the transaction {transaction_id}"
 				)
 
-		print("Check Balance")
+			print('Fix UTXOs')
 
-		# 2. If they have sufficient amount of coins
-		surplus = input_balance - float(amount)
-		if surplus < 0.0:
-			raise custom_errors.InsufficientAmount(
-				err=f"Insufficient amount from node '{sender_address}' at the transaction {transaction_id}"
-			)
+			# Now we have validated the input transactions we can update our UTXOs
+			for input_trans_id in transaction['inputTransactions']:
+				del sender_UTXOs[input_trans_id]
 
-		# At this point we have validated the transaction,
-		# and we can produce the transaction outputs
-		transaction_object.add_transaction_outputs(surplus_amount=str(surplus))
-		for trans_output in transaction_object.transaction_outputs:
-			receiver_address = trans_output.receiver_address
-			if receiver_address not in self.UTXOs.keys():
-				self.UTXOs[receiver_address] = {}
-			self.UTXOs[receiver_address][trans_output.id] = trans_output.to_dict()
+			# At this point we have validated the transaction, and we can produce the transaction outputs
+			transaction_object.add_transaction_outputs(surplus_amount=str(surplus))
+			for trans_output in transaction_object.transaction_outputs:
+				receiver_address = trans_output.receiver_address
+				if receiver_address not in self.UTXOs.keys():
+					self.UTXOs[receiver_address] = {}
+				self.UTXOs[receiver_address][trans_output.id] = trans_output.to_dict()
 
 		print("Transaction validated")
-		print('---------------------------------------')
 
 		self.add_transaction_to_block(transaction_object)
+
+		print('---------------------------------------')
 
 	'''
 	Validate the given chain either from the bootstrap node either for the consensus algorithm
@@ -398,6 +410,23 @@ class Node:
 				err="The given PreviousHashKey is not the same with my previous block."
 			)
 
+		# Last check if the block contains transactions which already added in my chain
+		my_trans_ids = set()
+		for my_block in self.chain:
+			for trans in my_block['transactions']:
+				my_trans_ids.add(trans['id'])
+
+		# print('TRANSACTIONS in my chain:', my_trans_ids)
+		new_block_trans_ids = {trans['id'] for trans in block['transactions']}
+		# print('TRANSACTIONS in new block:', new_block_trans_ids)
+
+		common_ids = my_trans_ids.intersection(new_block_trans_ids)
+
+		if len(common_ids) != 0:
+			raise custom_errors.InvalidBlockCommonTransactions(
+				err="Unable to accept this block because contains transactions which already added in my chain"
+			)
+
 	# ---------------- Broadcasting ---------------
 
 	def broadcast_transaction(self, transaction: Transaction):
@@ -424,31 +453,30 @@ class Node:
 	'''
 	Once the node finds the nonce first, sends the block to everyone.
 	'''
-	def broadcast_block(self):
+	def broadcast_block(self, block_dict: dict):
 
 		print('Start Block broadcasting')
 		print('---------------------------------------')
 
-		block_dict = self.current_block.to_dict()
+		# block_dict = self.current_block.to_dict()
 
 		# Send the mined block to all the other nodes
 		for node_id, node in self.ring.items():
+			# if node_id != self.node_id:
 
-			if node_id != self.node_id:
+			print(f"Send it: node_{node_id} @ {node['address']}:{str(node['port'])}")
+			network.send_block(
+				address=node['address'],
+				port=node['port'],
+				block=block_dict
+			)
 
-				print(f"Send it: node_{node_id} @ {node['address']}:{str(node['port'])}")
-				network.send_block(
-					address=node['address'],
-					port=node['port'],
-					block=block_dict
-				)
+	# print('Add the block to my current chain.')
+	# print('---------------------------------------')
 
-		print('Add the block to my current chain.')
-		print('---------------------------------------')
-
-		# I trust myself, so I will not send this block to myself in order to avoid validation
-		self.chain.append(block_dict)
-		self.create_new_block()
+	# self.validate_block(block_dict)
+	# self.chain.append(block_dict)
+	# self.create_new_block()
 
 	'''
 	Broadcast the final ring to all the other nodes. This function is only called from the bootstrap
@@ -588,9 +616,15 @@ class Node:
 		# Get the bytes of the current block
 		block_bytearray_before_nonce = self.current_block.bytearray_before_nonce()
 
-		# Start mining, the whole program blocks until mining is done
+		# Start parallel mining at the background
 		block_bytearray_before_nonce_str = block_bytearray_before_nonce.decode('utf-8')
-		self.mining_proc = Popen(["python", "mining.py", "-b", block_bytearray_before_nonce_str, "-d", str(DIFF), "-n", self.node_id])
+		self.mining_proc = Popen([
+			"python", "mining.py",
+			"-b", block_bytearray_before_nonce_str,
+			"-d", str(DIFF),
+			"-n", self.node_id,
+			"-bd", json.dumps(self.current_block.to_dict())
+		])
 
 	# ---------------- Consensus ---------------
 
@@ -606,10 +640,12 @@ class Node:
 		chains = self.ask_for_chain()
 
 		# Find the right chain
-		right_chain = self.find_the_right_chain(chains)
+		right_chain, right_UTXOs = self.find_the_right_chain(chains)
 
 		# Update the node
 		self.chain = right_chain
+		print('Accept my UTXOs after consensus algorithm.')
+		self.UTXOs = right_UTXOs
 
 		# Remove the common transactions between my current block and the blocks of the given chain
 		for block in self.chain:
@@ -655,6 +691,7 @@ class Node:
 		sorted_keys = sorted(chains, key=lambda k: (-len(chains[k]['chain']), chains[k]['last_block_timestamp']))
 
 		accepted_chain = None
+		accepted_UTXOs = None
 		for node_id in sorted_keys:
 
 			print(f'Checking the chain from node_{node_id}')
@@ -682,6 +719,7 @@ class Node:
 				# If we reach at this point it means the chain is valid,
 				# so stop checking the other chains
 				accepted_chain = chains[node_id]['chain']
+				accepted_UTXOs = chains[node_id]['UTXOs']
 				break
 
 			# Catch all the possible exceptions
@@ -694,9 +732,9 @@ class Node:
 				print('Try the next one')
 				pass
 
-		if accepted_chain is not None:
+		if accepted_chain is not None and accepted_UTXOs is not None:
 			print(f'Accepted the chain from the node_{node_id}')
-			return accepted_chain
+			return accepted_chain, accepted_UTXOs
 		else:
 			raise custom_errors.UnableResolveConflict(
 				err='Could not find a valid chain. Unable to resolve the conflict.'
