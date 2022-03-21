@@ -68,7 +68,6 @@ configuration.init(node=my_node)
 # ----------- Set Up Api Server -----------
 server_proc = Popen(["python", "server.py", "-a", address, "-p", str(port), "-n", node_id])
 time.sleep(2)   # Wait till the server is up
-# call(f"python server.py -a {address} -p {str(port)} -n {node_id} &", shell=True)
 
 # Now we are ready to notify the bootstrap node that a new node has arrived
 if node_id != '0':
@@ -255,12 +254,6 @@ def process_the_message(message_type: str, message_data: dict, message_id: str):
         print('---------------------------------')
         print(f'Error at node_{my_node.node_id}')
         print(str(e))
-
-
-    '''
-    except KeyError:
-        print(f'Invalid message format with type {message_type}')
-    '''
 
     # Update status on every new action
     update_status(my_node)

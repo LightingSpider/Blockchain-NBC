@@ -416,9 +416,7 @@ class Node:
 			for trans in my_block['transactions']:
 				my_trans_ids.add(trans['id'])
 
-		# print('TRANSACTIONS in my chain:', my_trans_ids)
 		new_block_trans_ids = {trans['id'] for trans in block['transactions']}
-		# print('TRANSACTIONS in new block:', new_block_trans_ids)
 
 		common_ids = my_trans_ids.intersection(new_block_trans_ids)
 
@@ -437,8 +435,6 @@ class Node:
 		# Send the mined transaction to all the other nodes
 		for node_id, node in self.ring.items():
 
-			# if node_id != self.node_id:
-
 			print(f"Send it: node_{node_id} @ {node['address']}:{str(node['port'])}")
 			network.send_transaction(
 				address=node['address'],
@@ -446,9 +442,6 @@ class Node:
 				transaction=transaction.to_dict()
 			)
 		print('---------------------------------------')
-
-		# I trust myself, so I will not send this transaction to myself in order to avoid validation
-		# self.add_transaction_to_block(transaction)
 
 	'''
 	Once the node finds the nonce first, sends the block to everyone.
@@ -458,11 +451,8 @@ class Node:
 		print('Start Block broadcasting')
 		print('---------------------------------------')
 
-		# block_dict = self.current_block.to_dict()
-
 		# Send the mined block to all the other nodes
 		for node_id, node in self.ring.items():
-			# if node_id != self.node_id:
 
 			print(f"Send it: node_{node_id} @ {node['address']}:{str(node['port'])}")
 			network.send_block(
