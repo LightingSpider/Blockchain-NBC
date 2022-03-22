@@ -103,10 +103,24 @@ def update_status(node: Node):
     new_values = {"$set": node.to_dict()}
     configuration.db["info"].update_one(query, new_values)
 
+    print(my_node.wallet.balance(my_node.UTXOs))
+
     print("STATUS UPDATED")
     print('---------------------------------------')
 
-queued_messages = []
+def prioritize_messages(messages: [tuple]) -> [tuple]:
+
+    transaction_list = [x for x in messages if x[0] == 'transaction']
+    sorted_transaction_list = sorted(transaction_list, key=lambda k: k[1]['timestamp'])
+
+    new_trans_list = [x for x in messages if x[0] == 'NewTransaction']
+    # sorted_new_trans_list = sorted(new_trans_list, key=lambda k: k[1]['timestamp'])
+
+    sorted_messages = []
+    sorted_messages.extend(sorted_transaction_list)
+    sorted_messages.extend(new_trans_list)
+
+    return sorted_messages
 
 def dequeue_messages(tagline: str = ''):
 
@@ -192,14 +206,6 @@ def process_the_message(message_type: str, message_data: dict, message_id: str):
 
             my_node.broadcast_block(block_dict=message_data['block_dict'])
 
-            '''
-            my_node.current_block.is_mined(
-                nonce=message_data['nonce'].encode('ISO-8859-1'),
-                hash_key=message_data['hashKey']
-            )
-            my_node.broadcast_block()
-            '''
-
             # Dequeue now all the messages
             dequeue_messages('Get some messages from my Queue. (FoundNonce)')
 
@@ -264,6 +270,8 @@ def process_the_message(message_type: str, message_data: dict, message_id: str):
 # -------------------- Streaming messages --------------------
 
 pipeline = [{'$match': {'operationType': 'insert'}}]
+queued_messages = []
+
 try:
     resume_token = None
 
@@ -295,10 +303,11 @@ try:
                     if my_node.mining_proc.poll() is None:
                         print(f'Node is mining so we will queue this message. {new_message_type}')
                         queued_messages.append(new_message)
-
+                        # queued_messages = prioritize_messages(queued_messages)
                     # We are NOT mining
                     else:
                         queued_messages.append(new_message)
+                        # queued_messages = prioritize_messages(queued_messages)
                         dequeue_messages('Dequeue from streaming function')
 
             # We haven't mined any block yet
@@ -311,6 +320,7 @@ try:
                 )
 
             resume_token = stream.resume_token
+            time.sleep(1)
 
 except pymongo_errors.PyMongoError as e:
 

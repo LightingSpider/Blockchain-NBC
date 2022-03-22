@@ -1,6 +1,7 @@
 from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA
 from Crypto.Signature import pkcs1_15
+import datetime
 
 '''
 A transaction can be created only from the sender who is also the owner of the wallet, in order to sing it.
@@ -40,6 +41,7 @@ class Transaction:
 
         # Initialize with None the signature at first and wait till the sender signs the transaction
         self.signature = signature
+        self.timestamp = str(datetime.datetime.now())
 
     # Convert the object into dictionary in order to transfer it to other nodes
     def to_dict(self) -> dict:
@@ -50,7 +52,8 @@ class Transaction:
             'amount': self.amount,
             'signature': self.signature.decode('ISO-8859-1'),
             'inputTransactions': self.transaction_inputs,
-            'outputTransactions': [trans_out.to_dict() for trans_out in self.transaction_outputs]
+            'outputTransactions': [trans_out.to_dict() for trans_out in self.transaction_outputs],
+            'timestamp': self.timestamp
         }
 
     '''
