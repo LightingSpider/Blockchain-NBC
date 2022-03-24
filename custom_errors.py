@@ -55,8 +55,10 @@ class NoValidationNeeded(Exception):
         return self.err
 
 class InvalidBlockCommonTransactions(Exception):
-    def __init__(self, err: str):
+    def __init__(self, err: str, block_for_validation: dict):
         self.err = err
+        self.block_for_validation = block_for_validation
 
     def __str__(self):
         return self.err
+

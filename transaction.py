@@ -10,8 +10,8 @@ We always need UTXOs as input for a transaction, in order to prevent double spen
 '''
 class Transaction:
 
-    def __init__(self, sender_address: str, receiver_address: str, amount: str, transaction_inputs: [str],
-                 signature: bytes = None):
+    def __init__(self, sender_address: str, receiver_address: str, amount: str, transaction_inputs: [str] = None,
+                 signature: bytes = None, timestamp: str = None):
         self.sender_address = sender_address
         self.receiver_address = receiver_address
         self.amount = amount
@@ -21,7 +21,7 @@ class Transaction:
         Τhe Transaction Input consists of the previousOutputId fields that are
         the id of the Transaction Output from which the amount transferred is derived.
         '''
-        self.transaction_inputs = transaction_inputs
+        self.transaction_inputs = [] if transaction_inputs is None else transaction_inputs
 
         # Create the bytearray which contains the necessary fields
         temp_bytearray = bytearray()  # Initialize the bytearray
@@ -41,7 +41,7 @@ class Transaction:
 
         # Initialize with None the signature at first and wait till the sender signs the transaction
         self.signature = signature
-        self.timestamp = str(datetime.datetime.now())
+        self.timestamp = str(datetime.datetime.now()) if timestamp is None else timestamp
 
     # Convert the object into dictionary in order to transfer it to other nodes
     def to_dict(self) -> dict:

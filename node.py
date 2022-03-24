@@ -27,6 +27,7 @@ class Node:
 		self.node_id = node_id
 		self.wallet = wallet
 		self.mining_proc = None
+		self.block_for_mining = None
 
 		# Key: Node public addresses
 		# Value: List of TransactionOutput.to_dict()
@@ -159,6 +160,10 @@ class Node:
 	'''
 	def receive_block(self, block: dict):
 
+		trans_amounts = [x['amount'] for x in block['transactions']]
+		print(f'Receive block with: {trans_amounts} and with hashKey:')
+		print(block['hashKey'])
+
 		# First validate the incoming block
 		self.validate_block(block)
 
@@ -182,44 +187,13 @@ class Node:
 		rec_pub_key = self.ring[receiver_node_id]['public_key']
 		send_pub_key = self.wallet.address
 
-		print('Collect the needed UTXOs')
-
-		# Find the UTXOs which can provide a total amount >= needed amount
-		# When we use a UTXO we have to remove it from the saved UTXOs
-		coins_cnt = 0.0
-		input_transactions = []
-		for utxo_key, utxo_value in self.UTXOs[send_pub_key].items():
-
-			# Add the UTXO to input transactions
-			print(f"Collect {utxo_value['amount']}")
-			coins_cnt += float(utxo_value['amount'])
-			input_transactions.append(utxo_key)
-
-			# Check if we have sufficient amount of coins
-			if coins_cnt >= float(amount):
-				print(f"Needed {amount} and collected {str(coins_cnt)}")
-				break
-
-		print('Check the balance')
-
-		if coins_cnt < float(amount):
-			raise custom_errors.InsufficientAmount(
-				err="Can't create the transaction. Insufficient amount"
-			)
-
-		# At this point means that we have sufficient amount of money for the transaction
-		# So remove the used UTXOs from the saved UTXOs
-		for utxo_key in input_transactions:
-			del self.UTXOs[send_pub_key][utxo_key]
-
 		print('Create the transaction object')
 
 		# Create the transaction
 		transaction = Transaction(
 			sender_address=send_pub_key,
 			receiver_address=rec_pub_key,
-			amount=amount,
-			transaction_inputs=input_transactions
+			amount=amount
 		)
 
 		print('Sign the transaction with my private key')
@@ -227,6 +201,7 @@ class Node:
 		# Sign the transaction with the sender's private key
 		transaction.sign_transaction(self.wallet.private_key)
 
+		'''
 		print('Fix my UTXOs while creating a transaction')
 
 		# Once we have checked the balance it means that this transaction is valid,
@@ -237,6 +212,8 @@ class Node:
 			if receiver_address not in self.UTXOs.keys():
 				self.UTXOs[receiver_address] = {}
 			self.UTXOs[receiver_address][trans_output.id] = trans_output.to_dict()
+		
+		'''
 
 		print('Transaction object created')
 		print('---------------------------------------')
@@ -310,54 +287,45 @@ class Node:
 				err=f"Could not validate the HashKey of the transaction {transaction_id}"
 			)
 
-		# We validate only transactions that came from other nodes, we trust ourselves,
-		# That's why we add the transaction to the block without checking the UTXOs,
-		# but we had to verify the signature in order to be sure that this transaction came from us
-		if sender_node_id != self.node_id:
+		# Find the UTXOs which can provide a total amount >= needed amount
+		# When we use a UTXO we have to remove it from the saved UTXOs
+		coins_cnt = 0.0
+		input_transactions = []
+		for utxo_key, utxo_value in self.UTXOs[sender_address].items():
 
-			# Check the inputTransactions
-			print('Check Input Transactions')
+			# Add the UTXO to input transactions
+			print(f"Collect {utxo_value['amount']}")
+			coins_cnt += float(utxo_value['amount'])
+			input_transactions.append(utxo_key)
 
-			# 1. If they are UTXOs
-			sender_UTXOs = self.UTXOs[sender_address]
-			input_balance = 0.0
-			for trans_id in transaction['inputTransactions']:
+			# Check if we have sufficient amount of coins
+			if coins_cnt >= float(amount):
+				print(f"Needed {amount} and collected {str(coins_cnt)}")
+				break
 
-				# If the transaction id refers to a UTXO:
-				# 1. add the amount to the balance
-				# 2. remove it from the sender's UTXOs in order to avoid double spending
-				try:
-					input_balance += float(sender_UTXOs[trans_id]['amount'])
-					# del sender_UTXOs[trans_id]
+		print('Check the balance')
+		surplus = coins_cnt - float(amount)
+		if surplus < 0:
+			raise custom_errors.InsufficientAmount(
+				err="Can't create the transaction. Insufficient amount"
+			)
 
-				except KeyError:
+		print('Add the TransactionInputs to the transaction object')
+		transaction_object.transaction_inputs = input_transactions
 
-					raise custom_errors.InvalidUTXOs(
-						err=f"Invalid UTXO from node {sender_node_id} with ID: '{trans_id}'"
-					)
+		print('Fix UTXOs')
 
-			print("Check Balance")
+		# Now we have validated the input transactions we can update our UTXOs
+		for input_trans_id in input_transactions:
+			del self.UTXOs[sender_address][input_trans_id]
 
-			# 2. If they have sufficient amount of coins
-			surplus = input_balance - float(amount)
-			if surplus < 0.0:
-				raise custom_errors.InsufficientAmount(
-					err=f"Insufficient amount from node '{sender_address}' at the transaction {transaction_id}"
-				)
-
-			print('Fix UTXOs')
-
-			# Now we have validated the input transactions we can update our UTXOs
-			for input_trans_id in transaction['inputTransactions']:
-				del sender_UTXOs[input_trans_id]
-
-			# At this point we have validated the transaction, and we can produce the transaction outputs
-			transaction_object.add_transaction_outputs(surplus_amount=str(surplus))
-			for trans_output in transaction_object.transaction_outputs:
-				receiver_address = trans_output.receiver_address
-				if receiver_address not in self.UTXOs.keys():
-					self.UTXOs[receiver_address] = {}
-				self.UTXOs[receiver_address][trans_output.id] = trans_output.to_dict()
+		# At this point we have validated the transaction, and we can produce the transaction outputs
+		transaction_object.add_transaction_outputs(surplus_amount=str(surplus))
+		for trans_output in transaction_object.transaction_outputs:
+			receiver_address = trans_output.receiver_address
+			if receiver_address not in self.UTXOs.keys():
+				self.UTXOs[receiver_address] = {}
+			self.UTXOs[receiver_address][trans_output.id] = trans_output.to_dict()
 
 		print("Transaction validated")
 
@@ -407,7 +375,7 @@ class Node:
 		prev_block_hash = self.chain[-1]['hashKey']
 		if prev_block_hash != block['previousHashKey']:
 			raise custom_errors.InvalidPreviousHashKey(
-				err="The given PreviousHashKey is not the same with my previous block."
+				err=f"The given PreviousHashKey: {block['previousHashKey']} of the block with hashKey: {block['hashKey']} is not the same with my previous block."
 			)
 
 		# Last check if the block contains transactions which already added in my chain
@@ -421,8 +389,11 @@ class Node:
 		common_ids = my_trans_ids.intersection(new_block_trans_ids)
 
 		if len(common_ids) != 0:
+			print('Common transactions at block validation')
+			print(common_ids)
 			raise custom_errors.InvalidBlockCommonTransactions(
-				err="Unable to accept this block because contains transactions which already added in my chain"
+				err="Unable to accept this block because contains transactions which already added in my chain",
+				block_for_validation=block
 			)
 
 	# ---------------- Broadcasting ---------------
@@ -435,12 +406,17 @@ class Node:
 		# Send the mined transaction to all the other nodes
 		for node_id, node in self.ring.items():
 
-			print(f"Send it: node_{node_id} @ {node['address']}:{str(node['port'])}")
-			network.send_transaction(
-				address=node['address'],
-				port=node['port'],
-				transaction=transaction.to_dict()
-			)
+			if node_id != self.node_id:
+				print(f"Send it: node_{node_id} @ {node['address']}:{str(node['port'])}")
+				network.send_transaction(
+					address=node['address'],
+					port=node['port'],
+					transaction=transaction.to_dict()
+				)
+
+		print('Send transaction to myself.')
+		self.validate_transaction(transaction.to_dict())
+
 		print('---------------------------------------')
 
 	'''
@@ -454,19 +430,17 @@ class Node:
 		# Send the mined block to all the other nodes
 		for node_id, node in self.ring.items():
 
-			print(f"Send it: node_{node_id} @ {node['address']}:{str(node['port'])}")
-			network.send_block(
-				address=node['address'],
-				port=node['port'],
-				block=block_dict
-			)
+			if node_id != self.node_id:
 
-	# print('Add the block to my current chain.')
-	# print('---------------------------------------')
+				print(f"Send it: node_{node_id} @ {node['address']}:{str(node['port'])}")
+				network.send_block(
+					address=node['address'],
+					port=node['port'],
+					block=block_dict
+				)
 
-	# self.validate_block(block_dict)
-	# self.chain.append(block_dict)
-	# self.create_new_block()
+		print('Send block to myself.')
+		self.receive_block(block_dict)
 
 	'''
 	Broadcast the final ring to all the other nodes. This function is only called from the bootstrap
@@ -608,6 +582,7 @@ class Node:
 
 		# Start parallel mining at the background
 		block_bytearray_before_nonce_str = block_bytearray_before_nonce.decode('utf-8')
+		self.block_for_mining = self.current_block.to_dict()
 		self.mining_proc = Popen([
 			"python", "mining.py",
 			"-b", block_bytearray_before_nonce_str,

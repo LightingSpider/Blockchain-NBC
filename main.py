@@ -4,6 +4,7 @@ from argparse import ArgumentParser
 import requests
 from subprocess import Popen
 from wallet import Wallet
+from transaction import Transaction, TransactionOutput
 from node import Node
 import network
 import time
@@ -81,6 +82,8 @@ if node_id != '0':
         }
     )
 
+global queued_messages
+
 # This function will be used only from bootstrap in order to update its settings
 # We update the settings in order to response fast whenever a new node arrives
 def update_init_settings(bootstrap_node: Node):
@@ -108,26 +111,64 @@ def update_status(node: Node):
     print("STATUS UPDATED")
     print('---------------------------------------')
 
-def prioritize_messages(messages: [tuple]) -> [tuple]:
+def check_for_new_block():
 
-    transaction_list = [x for x in messages if x[0] == 'transaction']
+    # Check if another node has mined a block
+    block_arrived_doc = list(configuration.message_queue.find({"type": "block"}))
+    if len(block_arrived_doc) > 0:
+
+        print('New block arrived while dequeue process')
+        print('---------------------------------------')
+
+        return block_arrived_doc[0]
+
+    # Check if our node has mined its block
+    else:
+        found_nonce_doc = list(configuration.message_queue.find({"type": "FoundNonce"}))
+        if len(found_nonce_doc) > 0:
+
+            print('Found Nonce while dequeue process')
+            print('---------------------------------------')
+
+            return found_nonce_doc[0]
+
+        # Nothing happened
+        else:
+            return None
+
+def prioritize_messages():
+
+    global queued_messages
+
+    transaction_list = [x for x in queued_messages if x[0] == 'transaction']
     sorted_transaction_list = sorted(transaction_list, key=lambda k: k[1]['timestamp'])
 
-    new_trans_list = [x for x in messages if x[0] == 'NewTransaction']
+    new_trans_list = [x for x in queued_messages if x[0] == 'NewTransaction']
     # sorted_new_trans_list = sorted(new_trans_list, key=lambda k: k[1]['timestamp'])
 
-    sorted_messages = []
-    sorted_messages.extend(sorted_transaction_list)
-    sorted_messages.extend(new_trans_list)
-
-    return sorted_messages
+    queued_messages = []
+    queued_messages.extend(sorted_transaction_list)
+    queued_messages.extend(new_trans_list)
 
 def dequeue_messages(tagline: str = ''):
+
+    global queued_messages
+
+    prioritize_messages()
 
     for _ in range(len(queued_messages)):
 
         print(tagline)
         print('---------------------------------------')
+
+        new_block = check_for_new_block()
+        if new_block is not None:
+            process_the_message(
+                message_type=new_block['type'],
+                message_data={k: v for k, v in new_block.items() if k not in ['_id', 'type']},
+                message_id=new_block['_id']
+            )
+            return
 
         q_messages_types = [x[0] for x in queued_messages]
         print(q_messages_types)
@@ -140,13 +181,55 @@ def dequeue_messages(tagline: str = ''):
             print('---------------------------------------')
             return
 
-        # Add the transaction
-        q_message = queued_messages.pop(0)
-        process_the_message(
-            message_type=q_message[0],
-            message_data=q_message[1],
-            message_id=q_message[2]
+        try:
+            # Add the transaction
+            q_message = queued_messages.pop(0)
+            process_the_message(
+                message_type=q_message[0],
+                message_data=q_message[1],
+                message_id=q_message[2]
+            )
+        except IndexError:
+            return
+
+def common_transaction_in_mining_block(new_block_trans_ids: [str], mining_block: dict):
+
+    if mining_block['hashKey'] is not None:
+        print('This node was not mining, so there is nothing for reverse.')
+        return
+
+    mining_block_trans_ids = [trans['id'] for trans in mining_block['transactions']]
+    uncommon_trans_ids = [x for x in mining_block_trans_ids if x not in new_block_trans_ids]
+    uncommon_trans = [trans for trans in mining_block['transactions'] if trans['id'] in uncommon_trans_ids]
+    print(f'Reverse {len(uncommon_trans)} transactions.')
+    print('---------------------------------------')
+
+    for trans in uncommon_trans:
+
+        # Create the transaction object
+        trans_object = Transaction(
+            sender_address=trans['sender'],
+            receiver_address=trans['receiver'],
+            amount=trans['amount'],
+            transaction_inputs=trans['inputTransactions'],
+            signature=trans['signature'].encode('ISO-8859-1')
         )
+
+        # Create the TransactionOutputs
+        surplus = None
+        for output_trans in trans['outputTransactions']:
+            if output_trans['receiverAddress'] == trans['sender']:
+                surplus = output_trans['amount']
+        if surplus is None:
+            print('Error in creating the transaction outputs')
+        else:
+            trans_object.add_transaction_outputs(surplus)
+
+        print(f"Reverse transaction with amount {trans['amount']}.")
+        print('---------------------------------------')
+
+        # Add the uncommon transactions to my current block and avoid validation
+        my_node.add_transaction_to_block(transaction=trans_object)
 
 def process_the_message(message_type: str, message_data: dict, message_id: str):
 
@@ -154,16 +237,24 @@ def process_the_message(message_type: str, message_data: dict, message_id: str):
         if message_type == 'block':
 
             print('New block arrived.')
+            configuration.message_queue.delete_one({'_id': message_id})
 
             # Need to stop every mining process running
             if my_node.mining_proc is not None:
                 if my_node.mining_proc.poll() is None:
                     print('Stop mining.')
                     Popen.terminate(my_node.mining_proc)
-            print('---------------------------------------')
+                    print('---------------------------------------')
 
             # Receive the new block
             my_node.receive_block(message_data)
+
+            print('Check for common transactions in the mining block in order not to lose them.')
+            if my_node.block_for_mining is not None:
+                common_transaction_in_mining_block(
+                    new_block_trans_ids=[trans['id'] for trans in message_data['transactions']],
+                    mining_block=my_node.block_for_mining
+                )
 
             # Dequeue now all the messages
             dequeue_messages('Get some messages from my Queue. (BlockArrived)')
@@ -202,8 +293,9 @@ def process_the_message(message_type: str, message_data: dict, message_id: str):
 
         elif message_type == 'FoundNonce':
 
-            # Get the mined block and broadcast it
+            configuration.message_queue.delete_one({'_id': message_id})
 
+            # Get the mined block and broadcast it
             my_node.broadcast_block(block_dict=message_data['block_dict'])
 
             # Dequeue now all the messages
@@ -261,6 +353,12 @@ def process_the_message(message_type: str, message_data: dict, message_id: str):
         print(f'Error at node_{my_node.node_id}')
         print(str(e))
 
+        common_transaction_in_mining_block(
+            new_block_trans_ids=[trans['id'] for trans in my_node.chain[-1]['transactions']],
+            mining_block=e.block_for_validation
+        )
+        print('---------------------------------------')
+
     # Update status on every new action
     update_status(my_node)
 
@@ -270,10 +368,11 @@ def process_the_message(message_type: str, message_data: dict, message_id: str):
 # -------------------- Streaming messages --------------------
 
 pipeline = [{'$match': {'operationType': 'insert'}}]
-queued_messages = []
 
 try:
     resume_token = None
+
+    queued_messages = []
 
     with configuration.message_queue.watch(pipeline) as stream:
         for insert_change in stream:
@@ -286,28 +385,21 @@ try:
 
             try:
 
-                # Always process immediately these messages
-                if new_message_type in ['block', 'FoundNonce', 'ring', 'NewNodeArrived']:
+                if new_message_type not in ['transaction', 'NewTransaction']:
                     process_the_message(
                         message_type=new_message_type,
                         message_data=new_message_data,
                         message_id=new_message_id
                     )
-
-                # As for the other messages we have a queue
-                # First, check if we are mining
                 else:
-                    time.sleep(1)
-
                     # We are mining
                     if my_node.mining_proc.poll() is None:
                         print(f'Node is mining so we will queue this message. {new_message_type}')
                         queued_messages.append(new_message)
-                        # queued_messages = prioritize_messages(queued_messages)
+
                     # We are NOT mining
                     else:
                         queued_messages.append(new_message)
-                        # queued_messages = prioritize_messages(queued_messages)
                         dequeue_messages('Dequeue from streaming function')
 
             # We haven't mined any block yet
