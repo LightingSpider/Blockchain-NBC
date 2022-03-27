@@ -21,7 +21,6 @@ block_dict = json.loads(args.block_dict_str)
 
 # Initialize Database Connection
 import pymongo
-# client = pymongo.MongoClient("mongodb+srv://admin:aekara21@blockchaincluster.l52dj.mongodb.net/myFirstDatabase?retryWrites=true&w=majority")
 client = pymongo.MongoClient(host=['localhost:27017'], replicaset='rs0')
 db = client[f"node_{node_id}"]
 message_queue = db['incoming_messages']
@@ -35,8 +34,6 @@ while True:
     # Find a random nonce (in bytes)
     nonce = get_random_bytes(64)
 
-    # print("Try nonce")
-
     # Add the nonce to the bytearray
     temp_bytearray = bytearray()
     temp_bytearray.extend(block_bytearray_before_nonce)
@@ -44,9 +41,6 @@ while True:
 
     # Hash the block with SHA256
     block_hash = SHA256.new(data=temp_bytearray)
-
-    # print("Hash Block:", block_hash.hexdigest())
-    # print("---------------------------------------")
 
     if block_hash.hexdigest()[0:DIFF] == DIFF * "0":
         print("FOUND nonce:", block_hash.hexdigest())
@@ -56,13 +50,6 @@ while True:
         block_dict['hashKey'] = block_hash.hexdigest()
         message_queue.insert_one({**{"type": "FoundNonce"}, **{"block_dict": block_dict}})
 
-        '''
-        # Add the block to the message collection
-        message_queue.insert_one({**{"type": "FoundNonce"}, **{
-            "nonce": nonce.decode('ISO-8859-1'),
-            "hashKey": block_hash.hexdigest()
-        }})
-        '''
         break
 
 # Kill myself

@@ -1,7 +1,6 @@
 import pymongo
 import os, signal
 
-# client = pymongo.MongoClient("mongodb+srv://admin:aekara21@blockchaincluster.l52dj.mongodb.net/myFirstDatabase?retryWrites=true&w=majority")
 client = pymongo.MongoClient(host=['localhost:27017'], replicaset='rs0')
 
 def clean_db():

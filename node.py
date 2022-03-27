@@ -1,5 +1,3 @@
-import subprocess
-
 N = 5
 C = 5
 DIFF = 5
@@ -18,8 +16,14 @@ from transaction import Transaction
 
 class Node:
 
-	# The chain is a list of blocks in the form of a dictionary
-	# The ring is a dictionary which contains all the necessary communication information with the other nodes
+	"""
+	The chain is a list of blocks in the form of a dictionary
+	The ring is a dictionary which contains all the necessary communication information with the other nodes
+	The UTXOs is a dictionary with key the public_key of each node and with value a dictionary of TransactionOutputs
+	The mining_proc is a value which helps us to understand if the mining process is finished or not
+	The block_for_mining is a block.to_dict() which helps us to reverse transactions
+	The chain_transaction_ids is a set of transaction ids in order to avoid duplicate transactions in our chain
+	"""
 	def __init__(self,  wallet: Wallet, chain: [dict], ring: dict, UTXOs: dict, node_id: str = '0', address: str = '127.0.0.1', port: int = 5000):
 
 		self.network_address = address
@@ -39,7 +43,7 @@ class Node:
 		# The creation of the boostrap node
 		if node_id == '0':
 
-			# The ring is where we store information for every node, as its id, its address (ip:port) its public key and its balance
+			# The ring is where we store information for every node, as its id, its address (ip:port) and its public key
 			# That's why here we only add at the ring the boostrap node
 			# It is a dictionary where the key is the id of each node
 			self.ring = {
@@ -98,8 +102,6 @@ class Node:
 			self.UTXOs = UTXOs
 
 			# Create the block where all the incoming transactions will be added.
-			# last_block = self.chain[-1]
-			# self.current_block = Block(prev_hash=last_block['hashKey'], transaction_list=[])
 			self.create_new_block()
 
 		print('Node object created, with id: ', node_id)
@@ -107,7 +109,7 @@ class Node:
 
 	# -------------- General  ---------------
 
-	def to_dict(self):
+	def to_dict(self) -> dict:
 
 		"""
 		Find the chain hash in order to sign it,
@@ -142,7 +144,7 @@ class Node:
 
 	# -------------- Receiver actions --------------
 
-	def add_transaction_to_block(self, transaction: Transaction):
+	def add_transaction_to_block(self, transaction: Transaction) -> None:
 
 		# Add it to the current block
 		block = self.current_block
@@ -155,13 +157,7 @@ class Node:
 			self.mine_block()
 			self.create_new_block()
 
-	'''
-	We call this function when another node broadcasts its block and we have to
-		1. Validate it
-		2. Add it to our chain
-	We don't create a new block here, we just remove the common transactions
-	'''
-	def receive_block(self, block: dict):
+	def receive_block(self, block: dict) -> None:
 
 		trans_amounts = [x['amount'] for x in block['transactions']]
 		print(f'Receive block with: {trans_amounts} and with hashKey:')
@@ -180,27 +176,9 @@ class Node:
 		for trans in block['transactions']:
 			self.chain_transaction_ids.add(trans['id'])
 
-		'''
-		# Update the UTXOs
-		print('---------------------------------------')
-		self.show_balances()
-		print('---------------------------------------')
-		print('Accept my UTXOs after new block arrived.')
-		chain_for_UTXOs = self.chain.copy()
-		chain_for_UTXOs.append(self.current_block.to_dict())
-		self.UTXOs = self.find_UTXOs_from_chain(chain_for_UTXOs)
-		# self.UTXOs = right_UTXOs
-		print('---------------------------------------')
-		self.show_balances()
-		print('---------------------------------------')
-		'''
-
-		# Update the previous_hash_key of the current block since a new block added to the chain
-		# self.current_block.previous_hash = block['hashKey']
-
 	# ---------------- Creation ---------------
 
-	def create_transaction(self, receiver_node_id: str, amount: str):
+	def create_transaction(self, receiver_node_id: str, amount: str) -> None:
 
 		print("Create a transaction")
 		print(f"node_{self.node_id} --> node_{receiver_node_id} : {amount} NBCs")
@@ -223,30 +201,13 @@ class Node:
 		# Sign the transaction with the sender's private key
 		transaction.sign_transaction(self.wallet.private_key)
 
-		'''
-		print('Fix my UTXOs while creating a transaction')
-
-		# Once we have checked the balance it means that this transaction is valid,
-		# se we need to update the UTXOs by producing the correct transactionOutputs
-		transaction.add_transaction_outputs(surplus_amount=str(coins_cnt - float(amount)))
-		for trans_output in transaction.transaction_outputs:
-			receiver_address = trans_output.receiver_address
-			if receiver_address not in self.UTXOs.keys():
-				self.UTXOs[receiver_address] = {}
-			self.UTXOs[receiver_address][trans_output.id] = trans_output.to_dict()
-		
-		'''
-
 		print('Transaction object created')
 		print('---------------------------------------')
 
 		# Broadcast the transaction to all the other nodes
 		self.broadcast_transaction(transaction)
 
-	'''
-	When the current blocked is broadcast we need to create a new one
-	'''
-	def create_new_block(self):
+	def create_new_block(self) -> None:
 
 		# Initialize a new empty block
 		self.current_block = Block(
@@ -256,13 +217,19 @@ class Node:
 	# ----------------  Validation  ---------------
 
 	'''
-	1. Verify the signature
-	2. Check the UTXOs
-	3. Check the balance
-	4. Allow the transaction or abort
-	5. Transaction Outputs are created and added to the list of UTXOs
+	This is one of the most important functions of the whole system
+	1. Check the capacity of the block in order to avoid asynchronous block over limit
+	2. Create the transaction object with the old timestamp in order to create the same transaction ID
+	3. Verify the signature
+	4. Verify the hash (which is out transaction_id) 
+	5. Check the UTXOs
+	6. Check the balance
+	7. Add the needed TransactionInputs
+	8. Create the 2 TransactionOutputs
+	9. Update our UTXOs
+	10. Check if this transaction exists in our chain
 	'''
-	def validate_transaction(self, transaction: dict):
+	def validate_transaction(self, transaction: dict) -> None:
 
 		# Extract all the necessary information form the transaction
 		sender_address = transaction['sender']
@@ -364,7 +331,7 @@ class Node:
 	Validate the given chain either from the bootstrap node either for the consensus algorithm
 	The validate_block is called for all the blocks except the genesis block
 	'''
-	def validate_chain(self):
+	def validate_chain(self) -> None:
 
 		# Validate each block in the chain which is a list of dicts
 		for block in self.chain:
@@ -374,10 +341,12 @@ class Node:
 				self.validate_block(block)
 
 	'''
-	Check a block's validity by checking its hash and 
-	check that the previous_hash field is equal to the hash of the previous block.
+	1. Check if the hash_key has the required Difficulty
+	2. Check the nonce
+	3. Check the previous_hash_key
+	4. Check if the block contains transaction which are already added in our chain
 	'''
-	def validate_block(self, block: dict):
+	def validate_block(self, block: dict) -> None:
 
 		# Check the validity of the hash_key with the difficulty
 		block_hash = block['hashKey']
@@ -426,7 +395,7 @@ class Node:
 
 	# ---------------- Broadcasting ---------------
 
-	def broadcast_transaction(self, transaction: Transaction):
+	def broadcast_transaction(self, transaction: Transaction) -> None:
 
 		print(f"Start broadcasting the transaction with id {transaction.transaction_id.hexdigest()}")
 		print('---------------------------------------')
@@ -447,10 +416,7 @@ class Node:
 
 		print('---------------------------------------')
 
-	'''
-	Once the node finds the nonce first, sends the block to everyone.
-	'''
-	def broadcast_block(self, block_dict: dict):
+	def broadcast_block(self, block_dict: dict) -> None:
 
 		print('Start Block broadcasting')
 		print('---------------------------------------')
@@ -471,9 +437,10 @@ class Node:
 		self.receive_block(block_dict)
 
 	'''
-	Broadcast the final ring to all the other nodes. This function is only called from the bootstrap
+	Broadcast the final ring to all the other nodes. 
+	This function is only called from the bootstrap only when all the nodes have arrived
 	'''
-	def broadcast_final_ring(self, signature_ring: str, hash_ring: str):
+	def broadcast_final_ring(self, signature_ring: str, hash_ring: str) -> None:
 
 		print('Start broadcasting the final ring.')
 		print('---------------------------------------')
@@ -500,7 +467,7 @@ class Node:
 	Only the bootstrap node can add a node to the ring after checking his wallet and ip:port address
 	After adding, bootstrap node informs all other nodes and gives the request node an id and 100 NBCs
 	'''
-	def register_node_to_network(self, address: str, port: int, public_key: str):
+	def register_node_to_network(self, address: str, port: int, public_key: str) -> None:
 
 		# Only the bootstrap node can execute this function
 		if self.node_id != '0':
@@ -515,12 +482,6 @@ class Node:
 			'port': port,
 			'public_key': public_key
 		}
-
-		print("Current Ring:")
-		for k, v in self.ring.items():
-			print(k, ":", v)
-			print('---------')
-		print('---------------------------------------')
 
 		# Give the new node 100 NBC
 		self.create_transaction(receiver_node_id=new_node_id, amount='100.0')
@@ -551,7 +512,7 @@ class Node:
 	'''
 	Send the node_id, chain, UTXOs and ring to new node came into the network
 	'''
-	def send_init_settings(self, new_node_id: str):
+	def send_init_settings(self, new_node_id: str) -> None:
 		settings = {
 			'node_id': new_node_id,
 			'ring': self.ring,
@@ -570,7 +531,7 @@ class Node:
 	When all the nodes have arrived, the ring will be broadcast from the bootstrap node.
 	So each node has to validate the message and update its ring.
 	'''
-	def get_the_final_ring(self, ring: dict, signature: str, hash_ring: str):
+	def get_the_final_ring(self, ring: dict, signature: str, hash_ring: str) -> None:
 
 		print('Get the final Ring.')
 		print('---------------------------------------')
@@ -597,10 +558,11 @@ class Node:
 	# ---------------- Mining ---------------
 
 	'''
-		When a block has reached the capacity is ready to find the nonce (proof-of-work).
-		We will try random 'nonce' until the hash_key of block meets the requirements 
+	When a block has reached the capacity is ready to find the nonce (proof-of-work).
+	We will try random 'nonce' until the hash_key of block meets the requirements 
+	We create a new subprocess in order to achieve parallel mining
 	'''
-	def mine_block(self):
+	def mine_block(self) -> None:
 
 		print('Start mining')
 		print('---------------------------------------')
@@ -630,13 +592,12 @@ class Node:
 	The node asks the other nodes for the length of the blockchain and 
 	chooses to adopt this with the longer length.
 	'''
-	def resolve_conflicts(self):
+	def resolve_conflicts(self) -> None:
 
 		# Ask the other nodes for their chain
 		chains = self.ask_for_chain()
 
 		# Find the right chain
-		# right_chain = self.find_the_right_chain(chains)
 		right_chain, right_UTXOs, right_chain_ids = self.find_the_right_chain(chains)
 
 		# Update the chain
@@ -644,29 +605,10 @@ class Node:
 		self.UTXOs = right_UTXOs
 		self.chain_transaction_ids = set(right_chain_ids)
 
-		'''
-		# Update the UTXOs
-		print('---------------------------------------')
-		self.show_balances()
-		print('---------------------------------------')
-		print('Accept my UTXOs after consensus algorithm.')
-		# self.UTXOs = self.find_UTXOs_from_chain(self.chain)
-		self.UTXOs = right_UTXOs
-		print('---------------------------------------')
-		self.show_balances()
-		print('---------------------------------------')
-		'''
-
 		# Remove the common transactions between my current block and the blocks of the given chain
 		for block in self.chain:
 			self.current_block.remove_common_transactions(block['transactions'])
 
-		# Update the previous_hash_key of the current block since a new block added to the chain
-		# self.current_block.previous_hash = self.chain[-1]['hashKey']
-
-	'''
-	Ask every node in the network for their chain until this moment
-	'''
 	def ask_for_chain(self) -> dict:
 
 		print('Start asking for chain.')
@@ -692,7 +634,7 @@ class Node:
 		2. Longest, 
 		3. with the Oldest Block
 	'''
-	def find_the_right_chain(self, chains: dict):
+	def find_the_right_chain(self, chains: dict) -> tuple:
 
 		print('Trying to find the correct chain.')
 		print('---------------------------------------')
@@ -751,58 +693,3 @@ class Node:
 			raise custom_errors.UnableResolveConflict(
 				err='Could not find a valid chain. Unable to resolve the conflict.'
 			)
-
-	@staticmethod
-	def find_UTXOs_from_chain(chain: [dict]):
-
-		transaction_outputs = {}
-		transaction_inputs = set()
-
-		# Parse the whole chain
-		for block in chain:
-			# Get all the transactions in a block
-			for trans in block['transactions']:
-
-				# Remove the transaction inputs from our dictionary
-				for input_trans in trans['inputTransactions']:
-					transaction_inputs.add(input_trans)
-
-				# Add the transaction outputs into our dictionary
-				for output_trans in trans['outputTransactions']:
-					transaction_outputs[output_trans['id']] = output_trans
-
-		for trans_in in transaction_inputs:
-			del transaction_outputs[trans_in]
-
-		# Now we have collected all the unspent transaction outputs,
-		# we are ready to create the new UTXOs
-		new_UTXOs = {}
-		for trans_output_id, trans_output in transaction_outputs.items():
-			receiver_address = trans_output['receiverAddress']
-
-			# Ignore the first transaction
-			if receiver_address == '0':
-				continue
-
-			# Initialize the UTXO for the address
-			if receiver_address not in new_UTXOs.keys():
-				new_UTXOs[receiver_address] = {}
-
-			new_UTXOs[receiver_address][trans_output_id] = trans_output
-
-		# Check the new UTXOs
-		print("New UTXOs from the new accepted chain")
-		print(f"UXOs for: {len(new_UTXOs)} nodes")
-
-		return new_UTXOs
-
-	def show_balances(self):
-
-		for node_id, node_obj in self.ring.items():
-			wallet_balance = 0.0
-			wallet_UTXOs = self.UTXOs[node_obj['public_key']]
-
-			for utxo in wallet_UTXOs.values():
-				wallet_balance += float(utxo['amount'])
-
-			print(f'Wallet of node_{node_id}: {wallet_balance}')

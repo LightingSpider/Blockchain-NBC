@@ -15,7 +15,6 @@ address = args.address
 node_id = args.node_id
 
 # Initialize Database Connection
-# client = pymongo.MongoClient("mongodb+srv://admin:aekara21@blockchaincluster.l52dj.mongodb.net/myFirstDatabase?retryWrites=true&w=majority")
 client = pymongo.MongoClient(host=['localhost:27017'], replicaset='rs0')
 db = client[f"node_{node_id}"]
 message_queue = db['incoming_messages']

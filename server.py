@@ -18,7 +18,6 @@ node_id = args.node_id
 
 # Initialize Database Connection
 import pymongo
-# client = pymongo.MongoClient("mongodb+srv://admin:aekara21@blockchaincluster.l52dj.mongodb.net/myFirstDatabase?retryWrites=true&w=majority")
 client = pymongo.MongoClient(host=['localhost:27017'], replicaset='rs0')
 db = client[f"node_{node_id}"]
 message_queue = db['incoming_messages']
@@ -26,7 +25,6 @@ message_queue = db['incoming_messages']
 
 class Block(Resource):
 
-    # @jwt_required
     def post(self):
 
         # Retrieve incoming block
@@ -39,7 +37,6 @@ class Block(Resource):
 
 class Transaction(Resource):
 
-    # @jwt_required
     def post(self):
 
         # Retrieve incoming transaction
@@ -53,7 +50,6 @@ class Transaction(Resource):
 # Only for bootstrap node
 class InitSettings(Resource):
 
-    # @jwt_required
     def get(self):
 
         try:
@@ -71,7 +67,6 @@ class InitSettings(Resource):
 # Only for bootstrap node
 class NewNodeArrived(Resource):
 
-    # @jwt_required
     def post(self):
 
         # Retrieve the new node specs
@@ -84,7 +79,6 @@ class NewNodeArrived(Resource):
 
 class Ring(Resource):
 
-    # @jwt_required
     def post(self):
 
         # Retrieve incoming ring
@@ -97,7 +91,6 @@ class Ring(Resource):
 
 class Chain(Resource):
 
-    # @jwt_required
     def get(self):
 
         try:

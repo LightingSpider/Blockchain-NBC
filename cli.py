@@ -2,7 +2,6 @@ import click
 import pymongo
 
 # Connect to database
-# client = pymongo.MongoClient("mongodb+srv://admin:aekara21@blockchaincluster.l52dj.mongodb.net/myFirstDatabase?retryWrites=true&w=majority")
 client = pymongo.MongoClient(host=['localhost:27017'], replicaset='rs0')
 
 @click.group()
@@ -14,6 +13,7 @@ def cli():
 @click.argument('amount', metavar='amount')
 @click.option('--n', default='0', help='My node ID')
 def transaction(recipient_node_id: str, amount: str, n: str):
+
     """
     Transfer <amount> NBCs to node with id: <recipient_node_id>.
     """
@@ -30,9 +30,11 @@ def transaction(recipient_node_id: str, amount: str, n: str):
 @cli.command()
 @click.option('--n', default='0', help='My node ID')
 def view(n: str):
+
     """
     View the transactions contained in the last validated block in the blockchain.
     """
+
     try:
 
         db = client[f"node_{n}"]

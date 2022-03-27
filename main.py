@@ -4,7 +4,7 @@ from argparse import ArgumentParser
 import requests
 from subprocess import Popen
 from wallet import Wallet
-from transaction import Transaction, TransactionOutput
+from transaction import Transaction
 from node import Node
 import network
 import time
@@ -84,22 +84,10 @@ if node_id != '0':
 
 global queued_messages
 
-# This function will be used only from bootstrap in order to update its settings
-# We update the settings in order to response fast whenever a new node arrives
-def update_init_settings(bootstrap_node: Node):
-
-    query = {"_id": "settings_doc"}
-    new_values = {"$set": {
-        "chain": bootstrap_node.chain,
-        "UTXOs": bootstrap_node.UTXOs,
-        "ring": bootstrap_node.ring
-    }}
-    configuration.db["info"].update_one(query, new_values)
-
-    print("Settings updated")
-    print('---------------------------------------')
-
-# This function is for all the nodes
+'''
+This function is for all the nodes and it is called after every action
+in order to monitor the system through the database
+'''
 def update_status(node: Node):
 
     query = {"_id": "status_doc"}
@@ -111,6 +99,10 @@ def update_status(node: Node):
     print("STATUS UPDATED")
     print('---------------------------------------')
 
+'''
+When a new block arrives or when we have found a nonce number, we have to process the message immediately,
+So at dequeue_messages we always call this function in order to check if a new block arrived 
+'''
 def check_for_new_block():
 
     # Check if another node has mined a block
@@ -136,15 +128,20 @@ def check_for_new_block():
         else:
             return None
 
+'''
+This function sorts the messages in the list 'queued_messages' 
+giving priority to the type and the timestamp
+'''
 def prioritize_messages():
 
     global queued_messages
 
+    # First priority the oldest messages with the type 'transaction'
     transaction_list = [x for x in queued_messages if x[0] == 'transaction']
     sorted_transaction_list = sorted(transaction_list, key=lambda k: k[1]['timestamp'])
 
+    # Second priority the 'NewTransaction'
     new_trans_list = [x for x in queued_messages if x[0] == 'NewTransaction']
-    # sorted_new_trans_list = sorted(new_trans_list, key=lambda k: k[1]['timestamp'])
 
     queued_messages = []
     queued_messages.extend(sorted_transaction_list)
@@ -192,6 +189,13 @@ def dequeue_messages(tagline: str = ''):
         except IndexError:
             return
 
+'''
+This function is used to reverse transactions in order not to lose them.
+For example when a node starts mining, after that it creates a new current_block, 
+so if the mining fails because of the arrival of another mined block 
+we don't want to lose the transactions in the block which was in mining process.
+So we reverse these transactions and we add them again to our current_block without validation
+'''
 def common_transaction_in_mining_block(new_block_trans_ids: [str], mining_block: dict, ignore_mining: bool = False):
 
     if not ignore_mining and mining_block['hashKey'] is not None:
@@ -202,24 +206,13 @@ def common_transaction_in_mining_block(new_block_trans_ids: [str], mining_block:
     uncommon_trans_ids = [x for x in mining_block_trans_ids if x not in new_block_trans_ids]
     uncommon_trans = [trans for trans in mining_block['transactions'] if trans['id'] in uncommon_trans_ids]
 
-    print('Already mined transaction ids:')
-    for x in new_block_trans_ids:
-        print('\t -->', x)
-
-    print('My collected transaction ids:')
-    for x in mining_block_trans_ids:
-        print('\t -->', x)
-
-    print('Uncommon transaction ids:')
-    for x in uncommon_trans_ids:
-        print('\t -->', x)
-
     print(f'Reverse {len(uncommon_trans)} transactions.')
     print('---------------------------------------')
 
     for trans in uncommon_trans:
 
         # Create the transaction object
+        # Set the timestamp in order to create the same transaction id with the original
         trans_object = Transaction(
             sender_address=trans['sender'],
             receiver_address=trans['receiver'],
@@ -293,10 +286,6 @@ def process_the_message(message_type: str, message_data: dict, message_id: str):
                 port=message_data['port'],
                 public_key=message_data['public_key']
             )
-
-            # Save the current chain, which maybe contains only the genesis block
-            # Save the ring and UTXOs, which contains all the nodes' info at the current time
-            # update_init_settings(bootstrap_node=my_node)
 
         elif message_type == 'NewTransaction':
 
