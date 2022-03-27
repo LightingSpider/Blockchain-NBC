@@ -55,10 +55,17 @@ class NoValidationNeeded(Exception):
         return self.err
 
 class InvalidBlockCommonTransactions(Exception):
-    def __init__(self, err: str, block_for_validation: dict):
+    def __init__(self, err: str, block_for_validation: dict, common_trans_ids: [str] = None):
         self.err = err
         self.block_for_validation = block_for_validation
+        self.common_trans_ids = common_trans_ids
 
     def __str__(self):
         return self.err
 
+class TransactionAlreadyAdded(Exception):
+    def __init__(self, err: str):
+        self.err = err
+
+    def __str__(self):
+        return self.err

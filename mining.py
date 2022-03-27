@@ -21,8 +21,8 @@ block_dict = json.loads(args.block_dict_str)
 
 # Initialize Database Connection
 import pymongo
-client = pymongo.MongoClient(
-        "mongodb+srv://admin:aekara21@blockchaincluster.l52dj.mongodb.net/myFirstDatabase?retryWrites=true&w=majority")
+# client = pymongo.MongoClient("mongodb+srv://admin:aekara21@blockchaincluster.l52dj.mongodb.net/myFirstDatabase?retryWrites=true&w=majority")
+client = pymongo.MongoClient(host=['localhost:27017'], replicaset='rs0')
 db = client[f"node_{node_id}"]
 message_queue = db['incoming_messages']
 

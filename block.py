@@ -5,7 +5,7 @@ from Crypto.Hash import SHA256
 
 class Block:
 
-    def __init__(self, prev_hash: str, transaction_list: [Transaction], hash_key: str = None, nonce: bytes = None):
+    def __init__(self, transaction_list: [Transaction], hash_key: str = None, nonce: bytes = None, prev_hash: str = None):
 
         # When we create a block we know its previous block
         self.previous_hash = prev_hash
@@ -67,7 +67,12 @@ class Block:
         }
 
     def add_transaction(self, new_transaction: Transaction):
-        self.list_of_transactions.append(new_transaction)
+
+        my_trans_ids = [x.transaction_id.hexdigest() for x in self.list_of_transactions]
+        if new_transaction.transaction_id.hexdigest() not in my_trans_ids:
+            self.list_of_transactions.append(new_transaction)
+        else:
+            print('Transaction is already in this block.')
 
     # When a node finds a correct nonce number then the block is mined, so we can add the nonce and hash_key fields
     def is_mined(self, nonce: bytes, hash_key: str):
@@ -78,14 +83,14 @@ class Block:
 
     def remove_common_transactions(self, transactions: [dict]):
 
-        print('Remove the common transactions.')
-        print('---------------------------------------')
+        # print('Remove the common transactions.')
+        # print('---------------------------------------')
 
         # Convert the lists into sets in order to find differences
         curr_transactions_ids = set(self.get_transactions(only_ids=True))
         other_transactions_ids = {trans['id'] for trans in transactions}
 
-        print(f"{len(curr_transactions_ids.intersection(other_transactions_ids))} common transactions.")
+        # print(f"{len(curr_transactions_ids.intersection(other_transactions_ids))} common transactions.")
 
         # Remove from the current block the transactions that are validated from another block
         unique_transactions_ids = curr_transactions_ids - other_transactions_ids
@@ -115,3 +120,29 @@ class Block:
         block_bytearray.extend(nonce.encode('ISO-8859-1'))
 
         return SHA256.new(data=block_bytearray)
+
+    @staticmethod
+    def UTXOs_from_block(block: dict) -> (dict, [(str, str)]):
+
+        transaction_outputs = {}
+        transaction_inputs = []
+
+        # Get all the transactions in a block
+        for trans in block['transactions']:
+
+            # Collect the transaction inputs
+            for input_trans in trans['inputTransactions']:
+                transaction_inputs.append((trans['sender'], input_trans))
+
+            # Collect the transaction outputs
+            for output_trans in trans['outputTransactions']:
+                transaction_outputs[output_trans['id']] = output_trans
+
+        # Remove the used transaction outputs
+        try:
+            for trans_in in transaction_inputs:
+                del transaction_outputs[trans_in]
+        except KeyError:
+            pass
+
+        return transaction_outputs, transaction_inputs

@@ -28,6 +28,7 @@ class Node:
 		self.wallet = wallet
 		self.mining_proc = None
 		self.block_for_mining = None
+		self.chain_transaction_ids = set()
 
 		# Key: Node public addresses
 		# Value: List of TransactionOutput.to_dict()
@@ -97,8 +98,9 @@ class Node:
 			self.UTXOs = UTXOs
 
 			# Create the block where all the incoming transactions will be added.
-			last_block = self.chain[-1]
-			self.current_block = Block(prev_hash=last_block['hashKey'], transaction_list=[])
+			# last_block = self.chain[-1]
+			# self.current_block = Block(prev_hash=last_block['hashKey'], transaction_list=[])
+			self.create_new_block()
 
 		print('Node object created, with id: ', node_id)
 		print('---------------------------------------')
@@ -130,6 +132,7 @@ class Node:
 			"ring": self.ring,
 			"public_key": self.wallet.address,
 			"chain": self.chain,
+			"chain_transaction_ids": list(self.chain_transaction_ids),
 			"current_block": self.current_block.to_dict(),
 			"UTXOs": self.UTXOs,
 			"chain_hash": hash_chain.hexdigest(),
@@ -173,8 +176,27 @@ class Node:
 		# Remove the common transactions (if they exist)
 		self.current_block.remove_common_transactions(block['transactions'])
 
+		# Update the Chain transaction ids, where we keep the ids of all the transactions in our chain
+		for trans in block['transactions']:
+			self.chain_transaction_ids.add(trans['id'])
+
+		'''
+		# Update the UTXOs
+		print('---------------------------------------')
+		self.show_balances()
+		print('---------------------------------------')
+		print('Accept my UTXOs after new block arrived.')
+		chain_for_UTXOs = self.chain.copy()
+		chain_for_UTXOs.append(self.current_block.to_dict())
+		self.UTXOs = self.find_UTXOs_from_chain(chain_for_UTXOs)
+		# self.UTXOs = right_UTXOs
+		print('---------------------------------------')
+		self.show_balances()
+		print('---------------------------------------')
+		'''
+
 		# Update the previous_hash_key of the current block since a new block added to the chain
-		self.current_block.previous_hash = block['hashKey']
+		# self.current_block.previous_hash = block['hashKey']
 
 	# ---------------- Creation ---------------
 
@@ -228,7 +250,6 @@ class Node:
 
 		# Initialize a new empty block
 		self.current_block = Block(
-			prev_hash=self.chain[-1]['hashKey'],
 			transaction_list=[]
 		)
 
@@ -271,7 +292,7 @@ class Node:
 			sender_address=sender_address,
 			receiver_address=transaction['receiver'],
 			amount=amount,
-			transaction_inputs=transaction['inputTransactions'],
+			timestamp=transaction['timestamp'],
 			signature=signature
 		)
 
@@ -326,6 +347,12 @@ class Node:
 			if receiver_address not in self.UTXOs.keys():
 				self.UTXOs[receiver_address] = {}
 			self.UTXOs[receiver_address][trans_output.id] = trans_output.to_dict()
+
+		# Now check if this transaction is already added in my chain
+		if transaction_object.transaction_id.hexdigest() in self.chain_transaction_ids:
+			raise custom_errors.TransactionAlreadyAdded(
+				err="This transaction is already added in my chain"
+			)
 
 		print("Transaction validated")
 
@@ -393,7 +420,8 @@ class Node:
 			print(common_ids)
 			raise custom_errors.InvalidBlockCommonTransactions(
 				err="Unable to accept this block because contains transactions which already added in my chain",
-				block_for_validation=block
+				block_for_validation=block,
+				common_trans_ids=list(my_trans_ids)
 			)
 
 	# ---------------- Broadcasting ---------------
@@ -577,6 +605,9 @@ class Node:
 		print('Start mining')
 		print('---------------------------------------')
 
+		# We are ready to mine the block, so set the previous hash key
+		self.current_block.previous_hash = self.chain[-1]['hashKey']
+
 		# Get the bytes of the current block
 		block_bytearray_before_nonce = self.current_block.bytearray_before_nonce()
 
@@ -605,19 +636,33 @@ class Node:
 		chains = self.ask_for_chain()
 
 		# Find the right chain
-		right_chain, right_UTXOs = self.find_the_right_chain(chains)
+		# right_chain = self.find_the_right_chain(chains)
+		right_chain, right_UTXOs, right_chain_ids = self.find_the_right_chain(chains)
 
-		# Update the node
+		# Update the chain
 		self.chain = right_chain
-		print('Accept my UTXOs after consensus algorithm.')
 		self.UTXOs = right_UTXOs
+		self.chain_transaction_ids = set(right_chain_ids)
+
+		'''
+		# Update the UTXOs
+		print('---------------------------------------')
+		self.show_balances()
+		print('---------------------------------------')
+		print('Accept my UTXOs after consensus algorithm.')
+		# self.UTXOs = self.find_UTXOs_from_chain(self.chain)
+		self.UTXOs = right_UTXOs
+		print('---------------------------------------')
+		self.show_balances()
+		print('---------------------------------------')
+		'''
 
 		# Remove the common transactions between my current block and the blocks of the given chain
 		for block in self.chain:
 			self.current_block.remove_common_transactions(block['transactions'])
 
 		# Update the previous_hash_key of the current block since a new block added to the chain
-		self.current_block.previous_hash = self.chain[-1]['hashKey']
+		# self.current_block.previous_hash = self.chain[-1]['hashKey']
 
 	'''
 	Ask every node in the network for their chain until this moment
@@ -647,7 +692,7 @@ class Node:
 		2. Longest, 
 		3. with the Oldest Block
 	'''
-	def find_the_right_chain(self, chains: dict) -> [dict]:
+	def find_the_right_chain(self, chains: dict):
 
 		print('Trying to find the correct chain.')
 		print('---------------------------------------')
@@ -657,6 +702,7 @@ class Node:
 
 		accepted_chain = None
 		accepted_UTXOs = None
+		accepted_chain_ids = None
 		for node_id in sorted_keys:
 
 			print(f'Checking the chain from node_{node_id}')
@@ -685,6 +731,7 @@ class Node:
 				# so stop checking the other chains
 				accepted_chain = chains[node_id]['chain']
 				accepted_UTXOs = chains[node_id]['UTXOs']
+				accepted_chain_ids = chains[node_id]['chain_transaction_ids']
 				break
 
 			# Catch all the possible exceptions
@@ -699,8 +746,63 @@ class Node:
 
 		if accepted_chain is not None and accepted_UTXOs is not None:
 			print(f'Accepted the chain from the node_{node_id}')
-			return accepted_chain, accepted_UTXOs
+			return accepted_chain, accepted_UTXOs, accepted_chain_ids
 		else:
 			raise custom_errors.UnableResolveConflict(
 				err='Could not find a valid chain. Unable to resolve the conflict.'
 			)
+
+	@staticmethod
+	def find_UTXOs_from_chain(chain: [dict]):
+
+		transaction_outputs = {}
+		transaction_inputs = set()
+
+		# Parse the whole chain
+		for block in chain:
+			# Get all the transactions in a block
+			for trans in block['transactions']:
+
+				# Remove the transaction inputs from our dictionary
+				for input_trans in trans['inputTransactions']:
+					transaction_inputs.add(input_trans)
+
+				# Add the transaction outputs into our dictionary
+				for output_trans in trans['outputTransactions']:
+					transaction_outputs[output_trans['id']] = output_trans
+
+		for trans_in in transaction_inputs:
+			del transaction_outputs[trans_in]
+
+		# Now we have collected all the unspent transaction outputs,
+		# we are ready to create the new UTXOs
+		new_UTXOs = {}
+		for trans_output_id, trans_output in transaction_outputs.items():
+			receiver_address = trans_output['receiverAddress']
+
+			# Ignore the first transaction
+			if receiver_address == '0':
+				continue
+
+			# Initialize the UTXO for the address
+			if receiver_address not in new_UTXOs.keys():
+				new_UTXOs[receiver_address] = {}
+
+			new_UTXOs[receiver_address][trans_output_id] = trans_output
+
+		# Check the new UTXOs
+		print("New UTXOs from the new accepted chain")
+		print(f"UXOs for: {len(new_UTXOs)} nodes")
+
+		return new_UTXOs
+
+	def show_balances(self):
+
+		for node_id, node_obj in self.ring.items():
+			wallet_balance = 0.0
+			wallet_UTXOs = self.UTXOs[node_obj['public_key']]
+
+			for utxo in wallet_UTXOs.values():
+				wallet_balance += float(utxo['amount'])
+
+			print(f'Wallet of node_{node_id}: {wallet_balance}')

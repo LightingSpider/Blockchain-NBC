@@ -18,8 +18,8 @@ node_id = args.node_id
 
 # Initialize Database Connection
 import pymongo
-client = pymongo.MongoClient(
-        "mongodb+srv://admin:aekara21@blockchaincluster.l52dj.mongodb.net/myFirstDatabase?retryWrites=true&w=majority")
+# client = pymongo.MongoClient("mongodb+srv://admin:aekara21@blockchaincluster.l52dj.mongodb.net/myFirstDatabase?retryWrites=true&w=majority")
+client = pymongo.MongoClient(host=['localhost:27017'], replicaset='rs0')
 db = client[f"node_{node_id}"]
 message_queue = db['incoming_messages']
 
@@ -110,7 +110,8 @@ class Chain(Resource):
                 "chain": status_doc["chain"],
                 "chain_hash": status_doc["chain_hash"],
                 "signature_chain": status_doc["signature_chain"],
-                "last_block_timestamp": status_doc["last_block_timestamp"]
+                "last_block_timestamp": status_doc["last_block_timestamp"],
+                "chain_transaction_ids": status_doc["chain_transaction_ids"]
             }
 
         except IndexError:

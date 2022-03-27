@@ -2,7 +2,8 @@ import click
 import pymongo
 
 # Connect to database
-client = pymongo.MongoClient("mongodb+srv://admin:aekara21@blockchaincluster.l52dj.mongodb.net/myFirstDatabase?retryWrites=true&w=majority")
+# client = pymongo.MongoClient("mongodb+srv://admin:aekara21@blockchaincluster.l52dj.mongodb.net/myFirstDatabase?retryWrites=true&w=majority")
+client = pymongo.MongoClient(host=['localhost:27017'], replicaset='rs0')
 
 @click.group()
 def cli():

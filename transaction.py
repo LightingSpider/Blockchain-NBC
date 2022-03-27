@@ -15,6 +15,17 @@ class Transaction:
         self.sender_address = sender_address
         self.receiver_address = receiver_address
         self.amount = amount
+        self.timestamp = str(datetime.datetime.now()) if timestamp is None else timestamp
+
+        # Create the bytearray which contains the necessary fields
+        temp_bytearray = bytearray()  # Initialize the bytearray
+        temp_bytearray.extend(sender_address.encode('utf-8'))  # Add the sender_address
+        temp_bytearray.extend(receiver_address.encode('utf-8'))  # Add the recipient_address
+        temp_bytearray.extend(amount.encode('utf-8'))  # Add the value
+        temp_bytearray.extend(self.timestamp.encode('utf-8'))  # Add the timestamp
+
+        # Create the hash key based on this bytearray
+        self.transaction_id = SHA256.new(data=temp_bytearray)
 
         '''
         The transaction_inputs is a list of transaction ids, which shows from the money came from.
@@ -23,25 +34,12 @@ class Transaction:
         '''
         self.transaction_inputs = [] if transaction_inputs is None else transaction_inputs
 
-        # Create the bytearray which contains the necessary fields
-        temp_bytearray = bytearray()  # Initialize the bytearray
-        temp_bytearray.extend(sender_address.encode('utf-8'))  # Add the sender_address
-        temp_bytearray.extend(receiver_address.encode('utf-8'))  # Add the recipient_address
-        temp_bytearray.extend(amount.encode('utf-8'))  # Add the value
-        trans_inputs_bytes = [input_trans_id.encode('utf-8') for input_trans_id in self.transaction_inputs]
-        for x in trans_inputs_bytes:
-            temp_bytearray.extend(x)  # Add the transaction inputs
-
-        # Create the hash key based on this bytearray
-        self.transaction_id = SHA256.new(data=temp_bytearray)
-
         # Initialize with None at first and wait till the transaction validation
         # Signature is a type of [TransactionOutput]
         self.transaction_outputs = []
 
         # Initialize with None the signature at first and wait till the sender signs the transaction
         self.signature = signature
-        self.timestamp = str(datetime.datetime.now()) if timestamp is None else timestamp
 
     # Convert the object into dictionary in order to transfer it to other nodes
     def to_dict(self) -> dict:

@@ -192,15 +192,28 @@ def dequeue_messages(tagline: str = ''):
         except IndexError:
             return
 
-def common_transaction_in_mining_block(new_block_trans_ids: [str], mining_block: dict):
+def common_transaction_in_mining_block(new_block_trans_ids: [str], mining_block: dict, ignore_mining: bool = False):
 
-    if mining_block['hashKey'] is not None:
+    if not ignore_mining and mining_block['hashKey'] is not None:
         print('This node was not mining, so there is nothing for reverse.')
         return
 
     mining_block_trans_ids = [trans['id'] for trans in mining_block['transactions']]
     uncommon_trans_ids = [x for x in mining_block_trans_ids if x not in new_block_trans_ids]
     uncommon_trans = [trans for trans in mining_block['transactions'] if trans['id'] in uncommon_trans_ids]
+
+    print('Already mined transaction ids:')
+    for x in new_block_trans_ids:
+        print('\t -->', x)
+
+    print('My collected transaction ids:')
+    for x in mining_block_trans_ids:
+        print('\t -->', x)
+
+    print('Uncommon transaction ids:')
+    for x in uncommon_trans_ids:
+        print('\t -->', x)
+
     print(f'Reverse {len(uncommon_trans)} transactions.')
     print('---------------------------------------')
 
@@ -211,6 +224,7 @@ def common_transaction_in_mining_block(new_block_trans_ids: [str], mining_block:
             sender_address=trans['sender'],
             receiver_address=trans['receiver'],
             amount=trans['amount'],
+            timestamp=trans['timestamp'],
             transaction_inputs=trans['inputTransactions'],
             signature=trans['signature'].encode('ISO-8859-1')
         )
@@ -348,16 +362,25 @@ def process_the_message(message_type: str, message_data: dict, message_id: str):
         print('---------------------------------')
         print(str(e))
 
+    except custom_errors.TransactionAlreadyAdded as e:
+        print('---------------------------------')
+        print(str(e))
+
     except custom_errors.InvalidBlockCommonTransactions as e:
         print('---------------------------------')
         print(f'Error at node_{my_node.node_id}')
         print(str(e))
 
+        print('Reverse all the uncommon transactions')
+
         common_transaction_in_mining_block(
-            new_block_trans_ids=[trans['id'] for trans in my_node.chain[-1]['transactions']],
-            mining_block=e.block_for_validation
+            new_block_trans_ids=e.common_trans_ids,
+            mining_block=my_node.block_for_mining,
+            ignore_mining=True
         )
         print('---------------------------------------')
+
+        dequeue_messages('Get some messages from my Queue. (CommonTransactions)')
 
     # Update status on every new action
     update_status(my_node)

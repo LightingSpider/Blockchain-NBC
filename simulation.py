@@ -15,7 +15,8 @@ address = args.address
 node_id = args.node_id
 
 # Initialize Database Connection
-client = pymongo.MongoClient("mongodb+srv://admin:aekara21@blockchaincluster.l52dj.mongodb.net/myFirstDatabase?retryWrites=true&w=majority")
+# client = pymongo.MongoClient("mongodb+srv://admin:aekara21@blockchaincluster.l52dj.mongodb.net/myFirstDatabase?retryWrites=true&w=majority")
+client = pymongo.MongoClient(host=['localhost:27017'], replicaset='rs0')
 db = client[f"node_{node_id}"]
 message_queue = db['incoming_messages']
 
@@ -36,10 +37,11 @@ with open(f"/home/airth/Documents/9οeksamino/katanemimena/ergasia/noobcash/tran
         recipient_id = line[2]
         amount = line[4:].replace('\n', '')
         print(f"Transfer {amount} from {node_id} to {recipient_id}")
+        add_transaction(recipient_id, amount)
 
-        time.sleep(10)
+        time.sleep(60)
         cnt += 1
 
         if cnt % 10 == 0:
-            time.sleep(20)
+            time.sleep(120)
 
