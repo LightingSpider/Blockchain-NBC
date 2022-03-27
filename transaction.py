@@ -4,7 +4,7 @@ from Crypto.Signature import pkcs1_15
 import datetime
 
 '''
-A transaction can be created only from the sender who is also the owner of the wallet, in order to sing it.
+A transaction can be created only from the sender who is also the owner of the wallet, in order to sign it.
 When someone gets a transaction has to validate it.
 We always need UTXOs as input for a transaction, in order to prevent double spending.
 '''
@@ -34,14 +34,15 @@ class Transaction:
         '''
         self.transaction_inputs = [] if transaction_inputs is None else transaction_inputs
 
-        # Initialize with None at first and wait till the transaction validation
-        # Signature is a type of [TransactionOutput]
+        # transaction_outputs is a type of [TransactionOutput]
         self.transaction_outputs = []
 
         # Initialize with None the signature at first and wait till the sender signs the transaction
         self.signature = signature
 
+    '''
     # Convert the object into dictionary in order to transfer it to other nodes
+    '''
     def to_dict(self) -> dict:
         return {
             'id': self.transaction_id.hexdigest(),
@@ -65,7 +66,7 @@ class Transaction:
         3. The recipient of the transaction (the new holder of the coins),
         4. The amount that transferred.
     '''
-    def add_transaction_outputs(self, surplus_amount: str):
+    def add_transaction_outputs(self, surplus_amount: str) -> None:
 
         # In this TransactionOutput the receiver is the Transaction receiver
         receiver_transaction_output = TransactionOutput(official_transaction_id=self.transaction_id,
@@ -83,7 +84,7 @@ class Transaction:
     Sign the transaction with the private key of the sender
     This function creates a PKCS#1 v1.5 signature of a message, which is the hash key of some data.
     '''
-    def sign_transaction(self, sender_private_key: RSA.RsaKey):
+    def sign_transaction(self, sender_private_key: RSA.RsaKey) -> None:
         self.signature = pkcs1_15.new(sender_private_key).sign(self.transaction_id)
 
 '''
@@ -107,7 +108,7 @@ class TransactionOutput:
         self.id = SHA256.new(data=temp_bytearray).hexdigest()
 
     # Convert the object into dictionary in order to transfer it to other nodes
-    def to_dict(self):
+    def to_dict(self) -> dict:
         return {
             'id': self.id,
             'officialTransactionId': self.official_transaction_id.hexdigest(),
