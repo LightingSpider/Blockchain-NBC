@@ -1,5 +1,5 @@
-N = 5
-C = 5
+N = 4
+C = 1
 DIFF = 5
 
 import json
@@ -334,11 +334,36 @@ class Node:
 	def validate_chain(self) -> None:
 
 		# Validate each block in the chain which is a list of dicts
-		for block in self.chain:
+		# except the genesis block which is the first block in the chain
+		for i in range(1, len(self.chain)):
+			block = self.chain[i]
 
-			# Don't validate the genesis block
-			if block['nonce'].encode('utf-8') != b'0':
-				self.validate_block(block)
+			# Check the validity of the hash_key with the difficulty
+			block_hash = block['hashKey']
+			if block_hash[0:DIFF] != DIFF * '0':
+				raise custom_errors.InvalidHash(
+					err="Block hash does not satisfy the difficulty level."
+				)
+
+			# Check if the given nonce can produce the given hash
+			hash_key = Block.find_hash_key(
+				nonce=block['nonce'],
+				timestamp=block['timestamp'],
+				previous_hash=block['previousHashKey'],
+				transactions=block['transactions']
+			)
+			if hash_key.hexdigest() != block_hash:
+				raise custom_errors.InvalidHash(
+					err="Invalid block hash. Cannot generate the same hash key with the given nonce number."
+				)
+
+			# Check the validity of the prev_hash
+			prev_block_hash = self.chain[i-1]['hashKey']
+			if prev_block_hash != block['previousHashKey']:
+				raise custom_errors.InvalidPreviousHashKey(
+					err=f"The given PreviousHashKey: {block['previousHashKey']} of the block with hashKey: {block['hashKey']} is not the same with my previous block."
+				)
+
 
 	'''
 	1. Check if the hash_key has the required Difficulty
@@ -602,7 +627,7 @@ class Node:
 
 		# Update the chain
 		self.chain = right_chain
-		self.UTXOs = right_UTXOs
+		# self.UTXOs = right_UTXOs
 		self.chain_transaction_ids = set(right_chain_ids)
 
 		# Remove the common transactions between my current block and the blocks of the given chain
