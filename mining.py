@@ -21,7 +21,13 @@ block_dict = json.loads(args.block_dict_str)
 
 # Initialize Database Connection
 import pymongo
-client = pymongo.MongoClient(host=['localhost:27017'], replicaset='rs0')
+
+# Bootstrap
+if node_id == '0':
+    client = pymongo.MongoClient(host=['localhost:27017'], replicaset='rs0')
+else:
+    client = pymongo.MongoClient(host=['[2001:648:2ffe:501:cc00:11ff:fe87:68aa]:27017'], replicaset='rs0')
+
 db = client[f"node_{node_id}"]
 message_queue = db['incoming_messages']
 
