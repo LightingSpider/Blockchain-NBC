@@ -3,7 +3,7 @@ import json
 
 def send_transaction(address: str, port: int, transaction: dict):
 
-    url = f"http://{address}:{str(port)}/transaction"
+    url = f"http://[{address}]:{str(port)}/transaction"
 
     payload = json.dumps(transaction)
     headers = {
@@ -16,7 +16,7 @@ def send_transaction(address: str, port: int, transaction: dict):
 
 def send_block(address: str, port: int, block: dict):
 
-    url = f"http://{address}:{str(port)}/block"
+    url = f"http://[{address}]:{str(port)}/block"
 
     payload = json.dumps(block)
     headers = {
@@ -29,7 +29,7 @@ def send_block(address: str, port: int, block: dict):
 
 def send_ring(address: str, port: int, ring: dict):
 
-    url = f"http://{address}:{str(port)}/ring"
+    url = f"http://[{address}]:{str(port)}/ring"
 
     payload = json.dumps(ring)
     headers = {
@@ -42,7 +42,7 @@ def send_ring(address: str, port: int, ring: dict):
 
 def send_settings(address: str, port: int, settings: dict):
 
-    url = f"http://{address}:{str(port)}/settings"
+    url = f"http://[{address}]:{str(port)}/settings"
 
     payload = json.dumps(settings)
     headers = {
@@ -55,7 +55,7 @@ def send_settings(address: str, port: int, settings: dict):
 
 def get_init_settings(address: str, port: int):
 
-    url = f"http://{address}:{str(port)}/init_settings"
+    url = f"http://[{address}]:{str(port)}/init_settings"
 
     response = requests.request("GET", url, headers={}, data={})
 
@@ -63,7 +63,7 @@ def get_init_settings(address: str, port: int):
 
 def get_chain(address: str, port: int):
 
-    url = f"http://{address}:{str(port)}/chain"
+    url = f"http://[{address}]:{str(port)}/chain"
 
     response = requests.request("GET", url, headers={}, data={})
 
@@ -71,7 +71,7 @@ def get_chain(address: str, port: int):
 
 def send_new_node_arrived(address: str, port: int, new_node_specs: dict):
 
-    url = f"http://{address}:{str(port)}/new_node_arrived"
+    url = f"http://[{address}]:{str(port)}/new_node_arrived"
 
     payload = json.dumps(new_node_specs)
     headers = {
