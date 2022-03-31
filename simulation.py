@@ -16,7 +16,6 @@ node_id = args.node_id
 
 # Initialize Database Connection
 
-# client = pymongo.MongoClient(host=['[2001:648:2ffe:501:cc00:11ff:fe87:68aa]:27017'], replicaset='rs0')
 client = pymongo.MongoClient(host=['localhost:27017'], replicaset='rs0')
 
 db = client[f"node_{node_id}"]
@@ -31,8 +30,7 @@ def add_transaction(recipient_node_id: str, amount: str):
 
     print("New transaction added successfully to queue.")
 
-
-with open(f"/home/airth/Documents/9οeksamino/katanemimena/ergasia/noobcash/transactions/10nodes/transactions{node_id}.txt") as transaction_file:
+with open(f"./transactions/10nodes/transactions{node_id}.txt") as transaction_file:
 
     cnt = 0
     for line in transaction_file:
@@ -41,8 +39,8 @@ with open(f"/home/airth/Documents/9οeksamino/katanemimena/ergasia/noobcash/tran
         print(f"Transfer {amount} from {node_id} to {recipient_id}")
         add_transaction(recipient_id, amount)
 
-        time.sleep(15)
+        time.sleep(25)
         cnt += 1
 
         if cnt % 10 == 0:
-            time.sleep(30)
+            time.sleep(50)

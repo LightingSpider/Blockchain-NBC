@@ -11,7 +11,6 @@ import time
 
 # Bootstrap information
 bootstrap_address = '127.0.0.1'
-# bootstrap_address = '2001:648:2ffe:501:cc00:11ff:fe87:68aa'
 bootstrap_port = 5000
 
 # At first create a wallet
@@ -203,9 +202,12 @@ def common_transaction_in_mining_block(new_block_trans_ids: [str], mining_block:
         print('This node was not mining, so there is nothing for reverse.')
         return
 
-    mining_block_trans_ids = [trans['id'] for trans in mining_block['transactions']]
-    uncommon_trans_ids = [x for x in mining_block_trans_ids if x not in new_block_trans_ids]
-    uncommon_trans = [trans for trans in mining_block['transactions'] if trans['id'] in uncommon_trans_ids]
+    try:
+        mining_block_trans_ids = [trans['id'] for trans in mining_block['transactions']]
+        uncommon_trans_ids = [x for x in mining_block_trans_ids if x not in new_block_trans_ids]
+        uncommon_trans = [trans for trans in mining_block['transactions'] if trans['id'] in uncommon_trans_ids]
+    except TypeError:
+        return
 
     print(f'Reverse {len(uncommon_trans)} transactions.')
     print('---------------------------------------')

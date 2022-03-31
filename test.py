@@ -7,7 +7,8 @@ from subprocess import call, Popen
 DIFF = 5
 node_id = '0'
 import hashlib
-
+import pymongo
+client = pymongo.MongoClient(host=['localhost:27017'], replicaset='rs0')
 
 def test_hash_validation():
     # ---------- CREATE BLOCK ----------
@@ -122,11 +123,6 @@ pkcs1_15.new(b.public_key).verify(
     signature=signature_ring
 )
 '''
-
-import pymongo
-
-# client = pymongo.MongoClient(host=['[2001:648:2ffe:501:cc00:11ff:fe87:68aa]:27017'], replicaset='rs0')
-client = pymongo.MongoClient(host=['localhost:27017'], replicaset='rs0')
 
 def find_utxos(db):
     info = db['info']

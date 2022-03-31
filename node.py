@@ -1,6 +1,6 @@
 N = 10
-C = 1
-DIFF = 4
+C = 5
+DIFF = 5
 
 import json
 from Crypto.Hash import SHA256

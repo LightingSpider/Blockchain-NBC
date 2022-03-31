@@ -11,7 +11,6 @@ def init(node: Node):
 
     global db, message_queue
 
-    # client = pymongo.MongoClient(host=['[2001:648:2ffe:501:cc00:11ff:fe87:68aa]:27017'], replicaset='rs0')
     client = pymongo.MongoClient(host=['localhost:27017'], replicaset='rs0')
 
     db = client[f"node_{node.node_id}"]
