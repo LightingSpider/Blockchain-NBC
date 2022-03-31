@@ -1,7 +1,8 @@
 import pymongo
 import os, signal
 
-client = pymongo.MongoClient(host=['localhost:27017'], replicaset='rs0')
+client = pymongo.MongoClient(host=['[2001:648:2ffe:501:cc00:11ff:fe87:68aa]:27017'], replicaset='rs0')
+# client = pymongo.MongoClient(host=['localhost:27017'], replicaset='rs0')
 
 def clean_db():
     db_names = client.list_database_names()

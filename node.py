@@ -1,5 +1,5 @@
-N = 4
-C = 1
+N = 5
+C = 10
 DIFF = 5
 
 import json

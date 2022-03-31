@@ -1,0 +1,6 @@
+flask
+flask-restx
+pymongo
+pycryptodome
+requests
+flask-cors
