@@ -10,8 +10,8 @@ import network
 import time
 
 # Bootstrap information
-# bootstrap_address = '127.0.0.1'
-bootstrap_address = '2001:648:2ffe:501:cc00:11ff:fe87:68aa'
+bootstrap_address = '127.0.0.1'
+# bootstrap_address = '2001:648:2ffe:501:cc00:11ff:fe87:68aa'
 bootstrap_port = 5000
 
 # At first create a wallet
